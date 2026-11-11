@@ -1,8 +1,11 @@
-name: Release APK
+name: Build & Release APK
 
-# Automatically builds signed release APKs and publishes a GitHub Release when:
-#   1. A version tag like v0.1.0 is pushed (`git tag v0.1.0 && git push origin v0.1.0`), OR
-#   2. You manually click "Run workflow" in the GitHub Actions tab.
+# Automatically tests, builds signed release APKs, and publishes a GitHub Release when:
+#   1. Changes are pushed to `main` (uses versionName from app/build.gradle.kts, e.g. v0.1.0), OR
+#   2. A version tag like v0.1.0 is pushed (`git tag v0.1.0 && git push origin v0.1.0`), OR
+#   3. You manually click "Run workflow" in the GitHub Actions tab.
+#
+# Pull requests to `main` run all unit tests and build the APKs without publishing a release.
 #
 # Optional repository secrets for production release signing (Settings -> Secrets -> Actions):
 #   - KEYSTORE_BASE64    : Base64-encoded contents of your release keystore (.jks)
@@ -15,8 +18,13 @@ name: Release APK
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       tag_name:
@@ -80,32 +88,36 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
           INPUT_TAG: ${{ inputs.tag_name }}
           INPUT_PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            RELEASE_TAG="$REF_NAME"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
             RAW_TAG="$INPUT_TAG"
-            if [[ -z "$RAW_TAG" ]]; then
-              VERSION_NAME=$(awk -F'"' '/versionName[[:space:]]*=/{print $2; exit}' app/build.gradle.kts)
-              if [[ -z "$VERSION_NAME" ]]; then
-                echo "::error::Unable to read versionName from app/build.gradle.kts"
-                exit 1
-              fi
-              RAW_TAG="v${VERSION_NAME}"
-            fi
             case "$RAW_TAG" in
               v*) RELEASE_TAG="$RAW_TAG" ;;
               *) RELEASE_TAG="v${RAW_TAG}" ;;
             esac
-            IS_PRERELEASE="${INPUT_PRERELEASE:-false}"
           else
-            RELEASE_TAG="$REF_NAME"
-            if [[ "$RELEASE_TAG" == *-* ]]; then
-              IS_PRERELEASE="true"
-            else
-              IS_PRERELEASE="false"
+            VERSION_NAME=$(awk -F'"' '/versionName[[:space:]]*=/{print $2; exit}' app/build.gradle.kts)
+            if [[ -z "$VERSION_NAME" ]]; then
+              echo "::error::Unable to read versionName from app/build.gradle.kts"
+              exit 1
             fi
+            RELEASE_TAG="v${VERSION_NAME}"
           fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            IS_PRERELEASE="${INPUT_PRERELEASE:-false}"
+          elif [[ "$RELEASE_TAG" == *-* ]]; then
+            IS_PRERELEASE="true"
+          else
+            IS_PRERELEASE="false"
+          fi
+
+          echo "Release tag resolved to: ${RELEASE_TAG} (prerelease=${IS_PRERELEASE})"
           echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
           echo "IS_PRERELEASE=${IS_PRERELEASE}" >> "$GITHUB_ENV"
 
@@ -182,6 +194,7 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub Release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -227,4 +240,3 @@ jobs:
         if: always()
         run: |
           rm -f loomplay-release.jks keystore.properties release-notes.md
-

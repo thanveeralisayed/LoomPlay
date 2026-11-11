@@ -114,7 +114,7 @@ Built by **Thanveer Ali** ([https://thanveer.vercel.app/](https://thanveer.verce
   ```bash
   ./gradlew testDebugUnitTest :app:assembleRelease
   ```
-- **Automated GitHub Releases:** Pushing a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`) or manually running the **Release APK** workflow from the **Actions** tab automatically runs tests, builds release APKs, and creates a GitHub Release with attached APKs and `SHA256SUMS.txt`.
+- **Automated GitHub Releases:** Pushing to `main`, pushing a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`), or manually running the **Build & Release APK** workflow from the **Actions** tab automatically runs tests, builds release APKs, and creates or updates a GitHub Release with attached APKs and `SHA256SUMS.txt`.
 - **Release Signing Secrets (optional):** Add `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` in **Settings -> Secrets and variables -> Actions** to sign CI releases with your permanent release keystore.
 
 </details>
