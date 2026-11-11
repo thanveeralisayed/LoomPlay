@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Engine 1: Primary Ribbon (Electric Indigo) -->
+    <path android:pathData="M 160,170 C 110,210 100,290 145,340 C 190,390 270,385 320,330 L 375,270 L 320,200 C 265,140 200,135 160,170 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="380"
+                android:endY="400"
+                android:startX="120"
+                android:startY="120"
+                android:type="linear">
+                <item
+                    android:color="#FFA5B4FC"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF6366F1"
+                    android:offset="0.35" />
+                <item
+                    android:color="#FF4338CA"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Engine 2: Power Ribbon (Cyber Cyan libmpv) -->
+    <path
+        android:fillAlpha="0.9"
+        android:pathData="M 210,165 C 260,120 340,125 380,180 C 420,235 410,310 355,355 L 290,345 C 330,305 345,250 310,205 C 275,165 230,160 210,165 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="400"
+                android:endY="140"
+                android:startX="160"
+                android:startY="380"
+                android:type="linear">
+                <item
+                    android:color="#FF0891B2"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF06B6D4"
+                    android:offset="0.5" />
+                <item
+                    android:color="#FF38BDF8"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Central Glass Play Emblem -->
+    <path android:pathData="M 226,182 C 226,172 237,166 246,171 L 334,229 C 343,234 343,246 334,252 L 246,310 C 237,315 226,309 226,299 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="330"
+                android:endY="330"
+                android:startX="210"
+                android:startY="180"
+                android:type="linear">
+                <item
+                    android:color="#FFFFFFFF"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FFE2E8F0"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Edge Highlight Shimmer -->
+    <path
+        android:fillAlpha="0.4"
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 246,171 L 334,229 C 340,233 342,240 338,245 L 328,238 L 248,184 Z" />
+</vector>

@@ -1,0 +1,230 @@
+name: Release APK
+
+# Automatically builds signed release APKs and publishes a GitHub Release when:
+#   1. A version tag like v0.1.0 is pushed (`git tag v0.1.0 && git push origin v0.1.0`), OR
+#   2. You manually click "Run workflow" in the GitHub Actions tab.
+#
+# Optional repository secrets for production release signing (Settings -> Secrets -> Actions):
+#   - KEYSTORE_BASE64    : Base64-encoded contents of your release keystore (.jks)
+#   - KEYSTORE_PASSWORD  : Keystore password
+#   - KEY_ALIAS          : Signing key alias
+#   - KEY_PASSWORD       : Key password
+#
+# If those secrets are not configured yet, this workflow falls back to a temporary signing key
+# so the published APKs are still installable for testing.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v0.1.0). Leave empty to use app versionName.'
+        required: false
+        default: ''
+        type: string
+      prerelease:
+        description: 'Mark release as a pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & Publish Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Accept Android SDK licenses
+        run: |
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=${ANDROID_HOME}" >> "$GITHUB_ENV"
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [[ -z "$SDKMANAGER" && -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]]; then
+            SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          elif [[ -z "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager -type f 2>/dev/null | sort -V | tail -n 1)"
+          fi
+          if [[ -n "$SDKMANAGER" ]]; then
+            echo "Using sdkmanager: ${SDKMANAGER}"
+            set +o pipefail
+            yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses > /dev/null
+          else
+            echo "::warning::sdkmanager not found under ${ANDROID_HOME}; relying on preinstalled SDK licenses."
+          fi
+          ls -la "${ANDROID_HOME}/licenses" || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve release tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            RAW_TAG="$INPUT_TAG"
+            if [[ -z "$RAW_TAG" ]]; then
+              VERSION_NAME=$(awk -F'"' '/versionName[[:space:]]*=/{print $2; exit}' app/build.gradle.kts)
+              if [[ -z "$VERSION_NAME" ]]; then
+                echo "::error::Unable to read versionName from app/build.gradle.kts"
+                exit 1
+              fi
+              RAW_TAG="v${VERSION_NAME}"
+            fi
+            case "$RAW_TAG" in
+              v*) RELEASE_TAG="$RAW_TAG" ;;
+              *) RELEASE_TAG="v${RAW_TAG}" ;;
+            esac
+            IS_PRERELEASE="${INPUT_PRERELEASE:-false}"
+          else
+            RELEASE_TAG="$REF_NAME"
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          fi
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
+          echo "IS_PRERELEASE=${IS_PRERELEASE}" >> "$GITHUB_ENV"
+
+      - name: Configure APK signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [[ -n "$KEYSTORE_BASE64" ]]; then
+            if [[ -z "$KEYSTORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+              echo "::error::KEYSTORE_BASE64 is set, but KEYSTORE_PASSWORD, KEY_ALIAS, or KEY_PASSWORD is missing."
+              exit 1
+            fi
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 --decode > loomplay-release.jks
+            {
+              printf 'storeFile=loomplay-release.jks\n'
+              printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+              printf 'keyAlias=%s\n' "$KEY_ALIAS"
+              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            } > keystore.properties
+            echo "SIGNING_MODE=release" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Release keystore secrets are not set. Signing with a temporary CI keystore; configure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD for consistent app updates."
+            keytool -genkeypair -v \
+              -keystore loomplay-release.jks \
+              -storepass loomplayci \
+              -alias loomplayci \
+              -keypass loomplayci \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 3650 \
+              -dname "CN=LoomPlay CI, O=LoomPlay, C=US"
+            {
+              printf 'storeFile=loomplay-release.jks\n'
+              printf 'storePassword=loomplayci\n'
+              printf 'keyAlias=loomplayci\n'
+              printf 'keyPassword=loomplayci\n'
+            } > keystore.properties
+            echo "SIGNING_MODE=temporary" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run unit tests & build release APKs
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Prepare release APKs & checksums
+        run: |
+          mkdir -p release-assets
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/release/*.apk)
+          if [[ ${#apks[@]} -eq 0 ]]; then
+            echo "::error::No APKs found in app/build/outputs/apk/release/"
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            base="$(basename "$apk")"
+            abi="${base#app-}"
+            abi="${abi%-unsigned.apk}"
+            abi="${abi%-release.apk}"
+            abi="${abi%.apk}"
+            cp "$apk" "release-assets/LoomPlay-${RELEASE_TAG}-${abi}.apk"
+          done
+          (cd release-assets && sha256sum *.apk > SHA256SUMS.txt)
+          ls -lh release-assets/
+
+      - name: Upload workflow APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: loomplay-${{ env.RELEASE_TAG }}-apks
+          path: release-assets/*
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<EOF
+          ### Which APK should I download?
+
+          | File | Best For |
+          | :--- | :--- |
+          | \`LoomPlay-${RELEASE_TAG}-arm64-v8a.apk\` | **Most modern Android phones & tablets** (smallest download) |
+          | \`LoomPlay-${RELEASE_TAG}-universal.apk\` | **Works on all Android devices** (choose this if you are unsure) |
+          | \`LoomPlay-${RELEASE_TAG}-armeabi-v7a.apk\` | Older 32-bit Android phones |
+          | \`LoomPlay-${RELEASE_TAG}-x86_64.apk\` / \`x86.apk\` | Android emulators, Chromebooks, and PCs |
+
+          Verify downloads against \`SHA256SUMS.txt\` if needed.
+          EOF
+
+          if [[ "$SIGNING_MODE" == "temporary" ]]; then
+            cat >> release-notes.md <<EOF
+
+          > **Note:** Built with a temporary CI signing key because repository release keystore secrets were not configured.
+          EOF
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; updating assets."
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          else
+            flags=(
+              "$RELEASE_TAG"
+              release-assets/*
+              --target "$GITHUB_SHA"
+              --title "LoomPlay ${RELEASE_TAG}"
+              --generate-notes
+              --notes "$(cat release-notes.md)"
+            )
+            if [[ "$IS_PRERELEASE" == "true" ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "${flags[@]}"
+          fi
+
+      - name: Clean up temporary signing files
+        if: always()
+        run: |
+          rm -f loomplay-release.jks keystore.properties release-notes.md
+

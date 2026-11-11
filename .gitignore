@@ -1,0 +1,46 @@
+# Gradle & Kotlin compiler caches
+.gradle/
+.kotlin/
+build/
+bin/
+/captures/
+
+# CMake / NDK native build outputs
+.externalNativeBuild/
+.cxx/
+
+# Built application & binary artifacts
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Local environment & signing credentials
+local.properties
+keystore.properties
+*.jks
+*.keystore
+*.p12
+
+# Logs & crash dumps
+*.log
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# IDE & editor files
+*.iml
+.idea/
+.vscode/
+.navigation/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Design & branding assets
+stich-app-logos/
