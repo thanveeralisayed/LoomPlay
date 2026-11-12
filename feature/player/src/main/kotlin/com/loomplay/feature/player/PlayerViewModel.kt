@@ -536,7 +536,7 @@ class PlayerViewModel @Inject constructor(
                 mediaRepository.observePlaylistItems(playlistId)
             } else {
                 combine(
-                    mediaRepository.observeLibraryVideos(),
+                    mediaRepository.observeRawLibraryVideos(),
                     settingsRepository.userPreferences.map { it.librarySortOrder }.distinctUntilChanged(),
                 ) { library, sortOrder ->
                     val currentItem = library.firstOrNull { it.uri == uriString }

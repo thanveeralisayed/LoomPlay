@@ -504,12 +504,12 @@ fun PlayerScreen(
                                             val panChange = event.calculatePan()
                                             if (zoomChange != 1f || panChange.x != 0f || panChange.y != 0f) {
                                                 val nextScale = (zoomScale * zoomChange).coerceIn(1.0f, 3.0f)
-                                                zoomScale = nextScale
-                                                if (nextScale <= 1.01f) {
+                                                if (nextScale <= 1.05f) {
                                                     zoomScale = 1.0f
                                                     panX = 0f
                                                     panY = 0f
                                                 } else {
+                                                    zoomScale = nextScale
                                                     val maxPanX = (nextScale - 1f) * canvasWidthPx * 0.5f
                                                     val maxPanY = (nextScale - 1f) * canvasHeightPx * 0.5f
                                                     panX = (panX + panChange.x).coerceIn(-maxPanX, maxPanX)
@@ -628,7 +628,7 @@ fun PlayerScreen(
 
                 // Pinch-Zoom Reset Chip
                 AnimatedVisibility(
-                    visible = zoomScale > 1.02f && !uiState.isLocked,
+                    visible = zoomScale > 1.05f && uiState.isHudVisible && !uiState.isLocked,
                     enter = fadeIn(),
                     exit = fadeOut(),
                     modifier = Modifier

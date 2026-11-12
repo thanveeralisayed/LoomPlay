@@ -24,6 +24,8 @@ class MediaRepository @Inject constructor(
 ) {
     private val refreshTick = MutableStateFlow(0)
 
+    fun observeRawLibraryVideos(): Flow<List<LoomMediaItem>> = scanner.observeDeviceVideos()
+
     fun observeLibraryVideos(): Flow<List<LoomMediaItem>> = combine(
         scanner.observeDeviceVideos(),
         historyDao.observeHistory(),
