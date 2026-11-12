@@ -416,7 +416,7 @@ class MpvPlayerEngine @Inject constructor(
                     pendingExternalSubs += PendingExternalSub(
                         uri = sub.uri,
                         title = sub.title,
-                        autoSelect = false,
+                        autoSelect = sub.isDefault,
                     )
                 }
             }
