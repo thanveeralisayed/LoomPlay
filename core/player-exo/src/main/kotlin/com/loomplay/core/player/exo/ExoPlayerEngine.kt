@@ -327,6 +327,7 @@ class ExoPlayerEngine @Inject constructor(
     override fun detachSurfaceView() {
         playerView?.player = null
         (playerView?.parent as? ViewGroup)?.removeView(playerView)
+        playerView = null
     }
 
     override suspend fun prepare(

@@ -115,6 +115,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -226,8 +227,8 @@ fun PlayerScreen(
             emptyList()
         }
     }
-    val currentChapter = remember(chapters, positionMs) {
-        chapters.lastOrNull { it.startMs <= positionMs }
+    val currentChapterTitle = remember(chapters, positionMs / 1000L) {
+        chapters.lastOrNull { it.startMs <= positionMs }?.title
     }
 
     var brightnessFraction by remember {
@@ -504,12 +505,12 @@ fun PlayerScreen(
                                             val panChange = event.calculatePan()
                                             if (zoomChange != 1f || panChange.x != 0f || panChange.y != 0f) {
                                                 val nextScale = (zoomScale * zoomChange).coerceIn(1.0f, 3.0f)
-                                                zoomScale = nextScale
-                                                if (nextScale <= 1.01f) {
+                                                if (nextScale <= 1.05f) {
                                                     zoomScale = 1.0f
                                                     panX = 0f
                                                     panY = 0f
                                                 } else {
+                                                    zoomScale = nextScale
                                                     val maxPanX = (nextScale - 1f) * canvasWidthPx * 0.5f
                                                     val maxPanY = (nextScale - 1f) * canvasHeightPx * 0.5f
                                                     panX = (panX + panChange.x).coerceIn(-maxPanX, maxPanX)
@@ -597,7 +598,7 @@ fun PlayerScreen(
                     durationMs = durationMs,
                     bufferedMs = bufferedMs,
                     chapterFractions = chapterFractions,
-                    currentChapterTitle = currentChapter?.title,
+                    currentChapterTitle = currentChapterTitle,
                     hasChapters = chapters.isNotEmpty(),
                     videoSize = videoSize,
                     playbackSpeed = playbackSpeed,
@@ -628,13 +629,14 @@ fun PlayerScreen(
 
                 // Pinch-Zoom Reset Chip
                 AnimatedVisibility(
-                    visible = zoomScale > 1.02f && !uiState.isLocked,
+                    visible = zoomScale > 1.05f && uiState.isHudVisible && !uiState.isLocked,
                     enter = fadeIn(),
                     exit = fadeOut(),
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .displayCutoutPadding()
-                        .padding(top = 64.dp, end = 16.dp),
+                        .padding(top = 64.dp, end = 16.dp)
+                        .zIndex(5f),
                 ) {
                     Surface(
                         onClick = {
@@ -1544,6 +1546,7 @@ private fun SyncOffsetSheetContent(
             label = "Subtitle Delay",
             delayMs = subtitleDelayMs,
             accent = LoomColors.MpvCyan,
+            enabled = activeEngine == EngineType.MPV,
             onDelta = onAdjustSubtitle,
         )
 
@@ -1551,6 +1554,7 @@ private fun SyncOffsetSheetContent(
             label = "Audio Delay",
             delayMs = audioDelayMs,
             accent = LoomColors.ExoEmerald,
+            enabled = activeEngine == EngineType.MPV,
             onDelta = onAdjustAudio,
         )
     }
@@ -1561,6 +1565,7 @@ private fun SyncStepperRow(
     label: String,
     delayMs: Long,
     accent: Color,
+    enabled: Boolean = true,
     onDelta: (Long) -> Unit,
 ) {
     Surface(
@@ -1577,21 +1582,21 @@ private fun SyncStepperRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(label, style = MaterialTheme.typography.titleSmall, color = Color.White)
+                Text(label, style = MaterialTheme.typography.titleSmall, color = if (enabled) Color.White else LoomColors.OnSurfaceVariant)
                 Text(
                     text = "%+d ms".format(delayMs),
                     style = TimecodeTextStyle.tabular().copy(fontWeight = FontWeight.Bold),
-                    color = if (delayMs == 0L) LoomColors.OnSurfaceVariant else accent,
+                    color = if (!enabled || delayMs == 0L) LoomColors.OnSurfaceVariant else accent,
                 )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(onClick = { onDelta(-250L) }, modifier = Modifier.weight(1f)) { Text("-250") }
-                OutlinedButton(onClick = { onDelta(-50L) }, modifier = Modifier.weight(1f)) { Text("-50") }
-                OutlinedButton(onClick = { onDelta(50L) }, modifier = Modifier.weight(1f)) { Text("+50") }
-                OutlinedButton(onClick = { onDelta(250L) }, modifier = Modifier.weight(1f)) { Text("+250") }
+                OutlinedButton(onClick = { onDelta(-250L) }, enabled = enabled, modifier = Modifier.weight(1f)) { Text("-250") }
+                OutlinedButton(onClick = { onDelta(-50L) }, enabled = enabled, modifier = Modifier.weight(1f)) { Text("-50") }
+                OutlinedButton(onClick = { onDelta(50L) }, enabled = enabled, modifier = Modifier.weight(1f)) { Text("+50") }
+                OutlinedButton(onClick = { onDelta(250L) }, enabled = enabled, modifier = Modifier.weight(1f)) { Text("+250") }
             }
         }
     }
