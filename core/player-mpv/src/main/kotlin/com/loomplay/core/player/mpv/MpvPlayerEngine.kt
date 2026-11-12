@@ -553,10 +553,9 @@ class MpvPlayerEngine @Inject constructor(
         if (uri.scheme == "content" && subPfd == null) {
             return false
         }
-        return synchronized(mpvLock) {
+        val result = synchronized(mpvLock) {
             val instance = mpv
             if (instance == null || !hadLoadedCurrentFile) {
-                runCatching { subPfd?.close() }
                 return@synchronized false
             }
             val path = if (subPfd != null) {
@@ -574,6 +573,10 @@ class MpvPlayerEngine @Inject constructor(
             instance.command(cmd)
             true
         }
+        if (!result && subPfd != null) {
+            runCatching { subPfd.close() }
+        }
+        return result
     }
 
     private fun flushPendingExternalSubtitlesSafe() {

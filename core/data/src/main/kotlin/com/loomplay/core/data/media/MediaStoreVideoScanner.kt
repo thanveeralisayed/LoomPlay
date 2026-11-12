@@ -39,8 +39,12 @@ class MediaStoreVideoScanner @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    private val thumbnailCache = object : LruCache<String, Bitmap>(32 * 1024 * 1024) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    private val thumbnailCache = run {
+        val maxMemory = Runtime.getRuntime().maxMemory().coerceAtLeast(32L * 1024 * 1024)
+        val cacheSize = (maxMemory / 12).toInt().coerceIn(8 * 1024 * 1024, 32 * 1024 * 1024)
+        object : LruCache<String, Bitmap>(cacheSize) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        }
     }
 
     fun triggerRescan() {

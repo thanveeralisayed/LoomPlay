@@ -120,17 +120,13 @@ class PlayerViewModel @Inject constructor(
 
     val playbackStatus: StateFlow<PlaybackStatus> = playerManager.playbackStatus
 
-    val positionMs: StateFlow<Long> = playerManager.activeFlow { it.positionMs }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    val positionMs: StateFlow<Long> = playerManager.positionMs
 
-    val durationMs: StateFlow<Long> = playerManager.activeFlow { it.durationMs }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    val durationMs: StateFlow<Long> = playerManager.durationMs
 
-    val bufferedPositionMs: StateFlow<Long> = playerManager.activeFlow { it.bufferedPositionMs }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    val bufferedPositionMs: StateFlow<Long> = playerManager.bufferedPositionMs
 
-    val videoSize: StateFlow<VideoSize> = playerManager.activeFlow { it.videoSize }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VideoSize())
+    val videoSize: StateFlow<VideoSize> = playerManager.videoSize
 
     val tracks: StateFlow<MediaTracks> = playerManager.activeFlow { it.tracks }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MediaTracks())
@@ -138,8 +134,7 @@ class PlayerViewModel @Inject constructor(
     val chapters: StateFlow<List<MediaChapter>> = playerManager.chapters
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val playbackSpeed: StateFlow<Float> = playerManager.activeFlow { it.playbackSpeed }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1.0f)
+    val playbackSpeed: StateFlow<Float> = playerManager.playbackSpeed
 
     val stats: StateFlow<DecoderStats> = playerManager.activeFlow { it.stats }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DecoderStats())
