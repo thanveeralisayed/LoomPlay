@@ -87,6 +87,9 @@ class PlayerManager internal constructor(
     override val durationMs: StateFlow<Long> = activeFlow { it.durationMs }
         .stateIn(bridgeScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
+    override fun currentPositionMs(): Long = currentPlayer.positionMs.value
+    override fun currentDurationMs(): Long = currentPlayer.durationMs.value
+
     override val bufferedPositionMs: StateFlow<Long> = activeFlow { it.bufferedPositionMs }
         .stateIn(bridgeScope, SharingStarted.WhileSubscribed(5_000), 0L)
 

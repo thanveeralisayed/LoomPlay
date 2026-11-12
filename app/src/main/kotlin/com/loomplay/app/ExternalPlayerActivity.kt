@@ -1,11 +1,10 @@
 package com.loomplay.app
 
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
-import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -17,19 +16,16 @@ import androidx.compose.runtime.setValue
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.util.Consumer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.loomplay.core.data.preferences.SettingsRepository
 import com.loomplay.core.data.preferences.UserPreferences
 import com.loomplay.core.player.api.LoomPlaybackSessionBridge
 import com.loomplay.core.ui.theme.LoomPlayTheme
 import com.loomplay.feature.player.PlayerScreen
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-private data class ExternalMediaTarget(
-    val uri: String,
-    val title: String,
-    val mimeType: String?,
-)
 
 @AndroidEntryPoint
 class ExternalPlayerActivity : ComponentActivity() {
@@ -42,7 +38,8 @@ class ExternalPlayerActivity : ComponentActivity() {
 
     private lateinit var pipController: PipActionController
     private var isInPipModeState by mutableStateOf(false)
-    private var mediaTarget by mutableStateOf<ExternalMediaTarget?>(null)
+    private var mediaTarget by mutableStateOf<ExternalPlayerParams?>(null)
+    private var playbackTracker: ExternalPlaybackTracker? = null
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         isInPipModeState = info.isInPictureInPictureMode
@@ -57,12 +54,23 @@ class ExternalPlayerActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
 
-        val initialTarget = parseIntent(intent)
+        val initialTarget = ExternalPlayerContract.parseIntent(
+            incoming = intent,
+            contentResolver = contentResolver,
+            hasCallingActivity = callingActivity != null,
+        )
         if (initialTarget == null) {
+            setResult(Activity.RESULT_CANCELED)
             finish()
             return
         }
         mediaTarget = initialTarget
+        val tracker = ExternalPlaybackTracker(
+            mediaUri = initialTarget.uri,
+            initialPositionMs = initialTarget.initialPositionMs,
+        )
+        playbackTracker = tracker
+        setResult(Activity.RESULT_OK, tracker.buildResultIntent())
 
         pipController = PipActionController(this, sessionBridge).apply {
             isPlayerActive = true
@@ -71,6 +79,19 @@ class ExternalPlayerActivity : ComponentActivity() {
         addOnPictureInPictureModeChangedListener(pipListener)
         pipController.register()
         pipController.refreshPipParams()
+
+        lifecycleScope.launch {
+            combine(
+                sessionBridge.positionMs,
+                sessionBridge.durationMs,
+                sessionBridge.playbackState,
+            ) { pos, dur, status ->
+                Triple(pos, dur, status)
+            }.collect { (pos, dur, status) ->
+                tracker.update(pos, dur, status)
+                setResult(Activity.RESULT_OK, tracker.buildResultIntent())
+            }
+        }
 
         setContent {
             val prefs by settingsRepository.userPreferences.collectAsStateWithLifecycle(
@@ -95,6 +116,10 @@ class ExternalPlayerActivity : ComponentActivity() {
                         mediaUri = activeTarget.uri,
                         title = activeTarget.title,
                         mimeType = activeTarget.mimeType,
+                        headers = activeTarget.headers,
+                        initialPositionMs = activeTarget.initialPositionMs,
+                        forceStartFromBeginning = activeTarget.forceStartFromBeginning,
+                        initialExternalSubtitles = activeTarget.subtitles,
                         hostActivityClassName = ExternalPlayerActivity::class.java.name,
                         isInPictureInPictureMode = isInPipModeState,
                         onEnterPip = { pipController.enterPipIfSupported() },
@@ -109,12 +134,7 @@ class ExternalPlayerActivity : ComponentActivity() {
                         },
                         onNavigateBack = {
                             pipController.suppressAutoPip()
-                            if (isTaskRoot) {
-                                val mainIntent = Intent(this@ExternalPlayerActivity, MainActivity::class.java).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                                }
-                                startActivity(mainIntent)
-                            }
+                            syncLatestResult()
                             finish()
                         },
                     )
@@ -125,16 +145,42 @@ class ExternalPlayerActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        parseIntent(intent)?.let { updated ->
-            setIntent(intent)
-            pipController.resetAutoPipSuppression()
-            mediaTarget = updated
-        }
+        val updated = ExternalPlayerContract.parseIntent(
+            incoming = intent,
+            contentResolver = contentResolver,
+            hasCallingActivity = callingActivity != null,
+        ) ?: return
+
+        syncLatestResult()
+        setIntent(intent)
+        pipController.resetAutoPipSuppression()
+        val tracker = ExternalPlaybackTracker(
+            mediaUri = updated.uri,
+            initialPositionMs = updated.initialPositionMs,
+        )
+        playbackTracker = tracker
+        setResult(Activity.RESULT_OK, tracker.buildResultIntent())
+        mediaTarget = updated
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         pipController.onUserLeaveHint()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        syncLatestResult()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        syncLatestResult()
+    }
+
+    override fun finish() {
+        syncLatestResult()
+        super.finish()
     }
 
     override fun onDestroy() {
@@ -145,33 +191,12 @@ class ExternalPlayerActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun parseIntent(incoming: Intent?): ExternalMediaTarget? {
-        val uri = incoming?.data ?: return null
-        val uriString = uri.toString().takeIf { it.isNotBlank() } ?: return null
-        val resolvedMime = incoming.type?.takeIf { it.isNotBlank() && it != "*/*" }
-            ?: runCatching { contentResolver.getType(uri) }.getOrNull()
-        val resolvedTitle = resolveIntentTitle(incoming, uri)
-        return ExternalMediaTarget(
-            uri = uriString,
-            title = resolvedTitle,
-            mimeType = resolvedMime,
-        )
-    }
-
-    private fun resolveIntentTitle(incoming: Intent, uri: Uri): String {
-        if (uri.scheme == "content") {
-            runCatching {
-                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                    ?.use { cursor ->
-                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        if (idx >= 0 && cursor.moveToFirst()) {
-                            cursor.getString(idx)?.takeIf { it.isNotBlank() }?.let { return it }
-                        }
-                    }
-            }
-        }
-        incoming.getStringExtra(Intent.EXTRA_TITLE)?.takeIf { it.isNotBlank() }?.let { return it }
-        return uri.lastPathSegment?.takeIf { it.isNotBlank() }?.let(Uri::decode) ?: "Video"
+    private fun syncLatestResult() {
+        val tracker = playbackTracker ?: return
+        val pos = sessionBridge.currentPositionMs()
+        val dur = sessionBridge.currentDurationMs()
+        val status = sessionBridge.playbackState.value
+        tracker.update(pos, dur, status)
+        setResult(Activity.RESULT_OK, tracker.buildResultIntent())
     }
 }
-

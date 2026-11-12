@@ -401,7 +401,7 @@ class MainActivity : ComponentActivity() {
             action = Intent.ACTION_VIEW
             setDataAndType(dataUri, incoming.type)
             clipData = incoming.clipData
-            incoming.getStringExtra(Intent.EXTRA_TITLE)?.let { putExtra(Intent.EXTRA_TITLE, it) }
+            incoming.extras?.let { putExtras(it) }
             addFlags(
                 incoming.flags and (
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or
@@ -410,6 +410,9 @@ class MainActivity : ComponentActivity() {
                     ),
             )
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (callingActivity != null) {
+                addFlags(Intent.FLAG_ACTIVITY_FORWARD_RESULT)
+            }
         }
         startActivity(forwarded)
         return true

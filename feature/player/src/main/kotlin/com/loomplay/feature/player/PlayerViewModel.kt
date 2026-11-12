@@ -323,17 +323,30 @@ class PlayerViewModel @Inject constructor(
         headers: Map<String, String> = emptyMap(),
         playlistId: Long? = null,
         hostActivityClassName: String? = null,
+        initialPositionMs: Long? = null,
+        forceStartFromBeginning: Boolean = false,
+        initialExternalSubtitles: List<ExternalSubtitleSource> = emptyList(),
     ) {
         playerManager.claimOwnership(ownerToken)
         activeHostActivityClassName = hostActivityClassName
         playerManager.setActiveHostActivityClassName(hostActivityClassName)
         val headersSig = headers.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
-        val routeKey = "$uriString|$mimeType|${engineOverride?.name}|$playlistId|$headersSig"
+        val subsSig = initialExternalSubtitles.joinToString("&") { "${it.uri}:${it.isDefault}" }
+        val routeKey = "$uriString|$mimeType|${engineOverride?.name}|$playlistId|$headersSig|$initialPositionMs|$forceStartFromBeginning|$subsSig"
         if (initialRouteKey == routeKey) return
         initialRouteKey = routeKey
         activePlaylistId = playlistId
         currentHeaders = headers
-        playUriInternal(uriString, title, mimeType, engineOverride, headers)
+        playUriInternal(
+            uriString = uriString,
+            title = title,
+            mimeType = mimeType,
+            engineOverride = engineOverride,
+            headers = headers,
+            initialPositionMs = initialPositionMs,
+            forceStartFromBeginning = forceStartFromBeginning,
+            initialExternalSubtitles = initialExternalSubtitles,
+        )
     }
 
     private fun playUriInternal(
@@ -342,10 +355,13 @@ class PlayerViewModel @Inject constructor(
         mimeType: String? = null,
         engineOverride: EnginePreference? = null,
         headers: Map<String, String> = emptyMap(),
+        initialPositionMs: Long? = null,
+        forceStartFromBeginning: Boolean = false,
+        initialExternalSubtitles: List<ExternalSubtitleSource> = emptyList(),
     ) {
         val headersSig = headers.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
         val currentSig = currentHeaders.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
-        if (loadedUri == uriString && loadedMimeType == mimeType && loadedOverride == engineOverride && headersSig == currentSig && _uiState.value.currentUri == uriString) {
+        if (loadedUri == uriString && loadedMimeType == mimeType && loadedOverride == engineOverride && headersSig == currentSig && _uiState.value.currentUri == uriString && initialPositionMs == null && !forceStartFromBeginning) {
             return
         }
 
@@ -375,18 +391,20 @@ class PlayerViewModel @Inject constructor(
             } ?: EnginePreference.AUTO
             persistedEnginePref = effectiveOverride
 
-            val startPos = if (savedEntry != null && !savedEntry.isCompleted && savedEntry.lastPositionMs > 1_500L) {
-                savedEntry.lastPositionMs
-            } else {
-                0L
+            val startPos = when {
+                forceStartFromBeginning -> 0L
+                initialPositionMs != null && initialPositionMs >= 0L -> initialPositionMs
+                savedEntry != null && !savedEntry.isCompleted && savedEntry.lastPositionMs > 1_500L -> savedEntry.lastPositionMs
+                else -> 0L
             }
 
             val subDelay = savedEntry?.subtitleDelayMs ?: prefs.defaultSubtitleDelayMs
             val audioDelay = savedEntry?.audioDelayMs ?: 0L
             val initialSpeed = savedEntry?.playbackSpeed ?: prefs.defaultPlaybackSpeed
 
+            val hasDefaultExternalSub = initialExternalSubtitles.any { it.isDefault }
             desiredAudioTrackPref = savedEntry?.selectedAudioTrack
-            desiredSubtitleTrackPref = savedEntry?.selectedSubtitleTrack
+            desiredSubtitleTrackPref = if (hasDefaultExternalSub) null else savedEntry?.selectedSubtitleTrack
 
             val sidecars = if (prefs.autoDetectSidecarSubtitles) {
                 detectSidecarSubtitles(uriString)
@@ -394,7 +412,9 @@ class PlayerViewModel @Inject constructor(
                 emptyList()
             }
             if (!playerManager.isActiveOwner(ownerToken)) return@launch
+            val combinedSubtitles = (initialExternalSubtitles + sidecars).distinctBy { it.uri }
             discoveredSidecars.addAll(sidecars)
+            manualSidecars.addAll(initialExternalSubtitles)
 
             _uiState.update {
                 it.copy(
@@ -435,7 +455,7 @@ class PlayerViewModel @Inject constructor(
                     mimeType = mimeType,
                     headers = headers,
                     preferredEngine = effectiveOverride,
-                    initialExternalSubtitles = sidecars,
+                    initialExternalSubtitles = combinedSubtitles,
                 ),
                 globalPreference = prefs.defaultEngine,
                 autoFallbackEnabled = prefs.autoFallbackEnabled,
@@ -447,15 +467,17 @@ class PlayerViewModel @Inject constructor(
                 ownerToken = ownerToken,
             )
 
-            if (sidecars.isNotEmpty() && desiredSubtitleTrackPref == null && startPos == 0L) {
-                val banner = if (sidecars.size == 1) {
-                    "Auto-loaded subtitle: ${sidecars.first().title ?: "Sidecar"}"
-                } else {
-                    "Auto-loaded ${sidecars.size} local subtitles"
-                }
-                showBanner(banner)
+            if (initialPositionMs != null && initialPositionMs > 0L) {
+                showBanner("Resumed at ${formatTimecode(startPos)}")
             } else if (startPos > 0L) {
                 showBanner("Resumed from previous session")
+            } else if (combinedSubtitles.isNotEmpty() && desiredSubtitleTrackPref == null) {
+                val banner = if (combinedSubtitles.size == 1) {
+                    "Loaded subtitle: ${combinedSubtitles.first().title ?: "External"}"
+                } else {
+                    "Loaded ${combinedSubtitles.size} subtitles"
+                }
+                showBanner(banner)
             }
 
             startProgressTicker()

@@ -355,10 +355,13 @@ class ExoPlayerEngine @Inject constructor(
         source.initialExternalSubtitles.forEach { sub ->
             if (extraSubtitles.none { it.uri == sub.uri }) {
                 val resolvedMime = resolveSubtitleMimeType(sub.uri, sub.mimeType, sub.title)
-                extraSubtitles += MediaItem.SubtitleConfiguration.Builder(sub.uri)
+                val builder = MediaItem.SubtitleConfiguration.Builder(sub.uri)
                     .setMimeType(resolvedMime)
                     .setLabel(sub.title ?: sub.uri.lastPathSegment ?: "External Subtitle")
-                    .build()
+                if (sub.isDefault) {
+                    builder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                }
+                extraSubtitles += builder.build()
             }
         }
         val mediaItem = MediaItem.Builder()

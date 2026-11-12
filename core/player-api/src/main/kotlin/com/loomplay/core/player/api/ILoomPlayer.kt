@@ -18,6 +18,7 @@ data class ExternalSubtitleSource(
     val uri: Uri,
     val mimeType: String? = null,
     val title: String? = null,
+    val isDefault: Boolean = false,
 )
 
 data class LoomMediaSource(
@@ -115,6 +116,9 @@ interface LoomPlaybackSessionBridge {
     val mediaMetadata: StateFlow<ActiveMediaMetadata>
     val isBackgroundAudioEnabled: StateFlow<Boolean>
     val activeHostActivityClassName: StateFlow<String?>
+
+    fun currentPositionMs(): Long = positionMs.value
+    fun currentDurationMs(): Long = durationMs.value
 
     fun play()
     fun pause()

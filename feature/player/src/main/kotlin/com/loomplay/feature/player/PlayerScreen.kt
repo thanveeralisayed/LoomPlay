@@ -144,6 +144,7 @@ import com.loomplay.core.model.MediaChapter
 import com.loomplay.core.model.MediaTracks
 import com.loomplay.core.model.PlaybackStatus
 import com.loomplay.core.model.VideoSize
+import com.loomplay.core.player.api.ExternalSubtitleSource
 import com.loomplay.core.ui.components.EngineBadgePill
 import com.loomplay.core.ui.components.GestureCapsuleIndicator
 import com.loomplay.core.ui.components.GlassIconButton
@@ -177,6 +178,9 @@ fun PlayerScreen(
     headers: Map<String, String> = emptyMap(),
     playlistId: Long? = null,
     hostActivityClassName: String? = null,
+    initialPositionMs: Long? = null,
+    forceStartFromBeginning: Boolean = false,
+    initialExternalSubtitles: List<ExternalSubtitleSource> = emptyList(),
     isInPictureInPictureMode: Boolean = false,
     onEnterPip: () -> Unit = {},
     onPlaybackStateForPip: (isPlaying: Boolean, videoSize: VideoSize) -> Unit = { _, _ -> },
@@ -269,7 +273,18 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(mediaUri, title, mimeType, engineOverride, headers, playlistId, resolvedHostClassName) {
+    LaunchedEffect(
+        mediaUri,
+        title,
+        mimeType,
+        engineOverride,
+        headers,
+        playlistId,
+        resolvedHostClassName,
+        initialPositionMs,
+        forceStartFromBeginning,
+        initialExternalSubtitles,
+    ) {
         viewModel.playFromRoute(
             uriString = mediaUri,
             title = title,
@@ -278,6 +293,9 @@ fun PlayerScreen(
             headers = headers,
             playlistId = playlistId,
             hostActivityClassName = resolvedHostClassName,
+            initialPositionMs = initialPositionMs,
+            forceStartFromBeginning = forceStartFromBeginning,
+            initialExternalSubtitles = initialExternalSubtitles,
         )
     }
 
