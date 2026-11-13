@@ -198,8 +198,10 @@ class MpvPlayerEngine @Inject constructor(
             instance.setOptionString("hwdec-codecs", "all")
             instance.setOptionString("ao", "audiotrack,opensles")
             instance.setOptionString("demuxer-max-bytes", "104857600")
-            instance.setOptionString("demuxer-readahead-secs", "20")
+            instance.setOptionString("demuxer-max-back-bytes", "52428800")
+            instance.setOptionString("demuxer-readahead-secs", "30")
             instance.setOptionString("network-timeout", "60")
+            instance.setOptionString("audio-pitch-correction", "yes")
             // Disabled fuzzy sidecar scan because LoomPlay manages sidecar subtitles explicitly.
             instance.setOptionString("sub-auto", "no")
             instance.setOptionString("keep-open", "yes")
@@ -389,7 +391,10 @@ class MpvPlayerEngine @Inject constructor(
                 s.equals("http", ignoreCase = true) || s.equals("https", ignoreCase = true)
             } == true
             if (isNetworkStream) {
-                runCatching { instance.setPropertyString("force-seekable", "yes") }
+                runCatching {
+                    instance.setPropertyString("force-seekable", "yes")
+                    instance.setPropertyString("stream-buffer-size", "8MiB")
+                }
             }
 
             if (startPositionMs > 0L) {
