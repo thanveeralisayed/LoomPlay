@@ -429,16 +429,20 @@ fun PlayerScreen(
                     }
                 },
                 update = { host ->
-                    if (isInPictureInPictureMode) {
-                        host.scaleX = 1f
-                        host.scaleY = 1f
-                        host.translationX = 0f
-                        host.translationY = 0f
+                    val (targetScale, targetPanX, targetPanY) = if (isInPictureInPictureMode) {
+                        Triple(1f, 0f, 0f)
                     } else {
-                        host.scaleX = zoomScale
-                        host.scaleY = zoomScale
-                        host.translationX = panX
-                        host.translationY = panY
+                        Triple(zoomScale, panX, panY)
+                    }
+                    if (host.scaleX != targetScale) {
+                        host.scaleX = targetScale
+                        host.scaleY = targetScale
+                    }
+                    if (host.translationX != targetPanX) {
+                        host.translationX = targetPanX
+                    }
+                    if (host.translationY != targetPanY) {
+                        host.translationY = targetPanY
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
