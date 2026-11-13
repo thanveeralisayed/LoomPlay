@@ -12,7 +12,7 @@ enum class EnginePreference {
 }
 
 enum class MpvHwDecMode(val mpvValue: String, val label: String) {
-    AUTO("mediacodec,mediacodec-copy", "Automatic"),
+    AUTO("auto-safe", "Automatic"),
     MEDIACODEC("mediacodec", "Hardware"),
     MEDIACODEC_COPY("mediacodec-copy", "Hybrid"),
     SOFTWARE("no", "Software"),

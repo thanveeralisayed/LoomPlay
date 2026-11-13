@@ -195,8 +195,11 @@ class MpvPlayerEngine @Inject constructor(
             instance.setOptionString("gpu-context", "android")
             instance.setOptionString("opengl-es", "yes")
             instance.setOptionString("hwdec", hwDecMode.mpvValue)
-            instance.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
+            instance.setOptionString("hwdec-codecs", "all")
             instance.setOptionString("ao", "audiotrack,opensles")
+            instance.setOptionString("demuxer-max-bytes", "104857600")
+            instance.setOptionString("demuxer-readahead-secs", "20")
+            instance.setOptionString("network-timeout", "60")
             // Disabled fuzzy sidecar scan because LoomPlay manages sidecar subtitles explicitly.
             instance.setOptionString("sub-auto", "no")
             instance.setOptionString("keep-open", "yes")
@@ -382,6 +385,12 @@ class MpvPlayerEngine @Inject constructor(
             instance.setPropertyString("user-agent", userAgent ?: "libmpv")
             instance.setPropertyString("referrer", referrer.orEmpty())
             instance.setPropertyString("http-header-fields", headerFields)
+            val isNetworkStream = source.uri.scheme?.let { s ->
+                s.equals("http", ignoreCase = true) || s.equals("https", ignoreCase = true)
+            } == true
+            if (isNetworkStream) {
+                runCatching { instance.setPropertyString("force-seekable", "yes") }
+            }
 
             if (startPositionMs > 0L) {
                 instance.setOptionString("start", (startPositionMs / 1000.0).toString())

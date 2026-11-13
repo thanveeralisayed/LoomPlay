@@ -20,7 +20,10 @@ import androidx.media3.common.VideoSize as Media3VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.extractor.metadata.Chapter
@@ -105,6 +108,8 @@ class ExoPlayerEngine @Inject constructor(
     private var activeSubtitleStyle: SubtitleStyleConfig = SubtitleStyleConfig()
     private var activeVolumeFraction: Float = 1.0f
     private val extraSubtitles = mutableListOf<MediaItem.SubtitleConfiguration>()
+    private var activeVideoDecoderName: String? = null
+    private var isVideoHwAccelerated: Boolean = true
 
     @OptIn(UnstableApi::class)
     private fun ensurePlayer(headers: Map<String, String> = emptyMap()): ExoPlayer {
@@ -120,6 +125,9 @@ class ExoPlayerEngine @Inject constructor(
         }
 
         val httpFactory = DefaultHttpDataSource.Factory().apply {
+            setAllowCrossProtocolRedirects(true)
+            setConnectTimeoutMs(15_000)
+            setReadTimeoutMs(15_000)
             if (headers.isNotEmpty()) {
                 setDefaultRequestProperties(headers)
             }
@@ -130,7 +138,13 @@ class ExoPlayerEngine @Inject constructor(
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
-        return ExoPlayer.Builder(context)
+        val renderersFactory = DefaultRenderersFactory(context).apply {
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            setMediaCodecSelector(MediaCodecSelector.DEFAULT)
+            setEnableDecoderFallback(true)
+        }
+
+        return ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ false)
             .build()
@@ -139,6 +153,23 @@ class ExoPlayerEngine @Inject constructor(
                 if (preservedTrackParams != null) {
                     trackSelectionParameters = preservedTrackParams
                 }
+                addAnalyticsListener(object : AnalyticsListener {
+                    override fun onVideoDecoderInitialized(
+                        eventTime: AnalyticsListener.EventTime,
+                        decoderName: String,
+                        initializedTimestampMs: Long,
+                        initializationDurationMs: Long,
+                    ) {
+                        activeVideoDecoderName = decoderName
+                        val lower = decoderName.lowercase()
+                        isVideoHwAccelerated = !(lower.startsWith("omx.google.") ||
+                            lower.startsWith("c2.android.") ||
+                            lower.startsWith("omx.ffmpeg.") ||
+                            lower.contains("sw") ||
+                            lower.contains("software"))
+                        syncMetrics(this@apply)
+                    }
+                })
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         _playbackState.value = when (playbackState) {
@@ -273,10 +304,17 @@ class ExoPlayerEngine @Inject constructor(
         val counters = player.videoDecoderCounters
         val totalFrames = counters?.let { it.renderedOutputBufferCount.toLong() + it.droppedBufferCount.toLong() } ?: 0L
 
+        val decoderName = activeVideoDecoderName ?: videoFmt?.codecs ?: "MediaCodec (ExoPlayer)"
+        val isHw = if (activeVideoDecoderName != null) {
+            isVideoHwAccelerated
+        } else {
+            true
+        }
+
         _stats.value = DecoderStats(
             activeEngine = EngineType.EXOPLAYER,
-            decoderName = videoFmt?.codecs ?: "MediaCodec (ExoPlayer)",
-            isHardwareAccelerated = true,
+            decoderName = decoderName,
+            isHardwareAccelerated = isHw,
             videoCodec = videoFmt?.sampleMimeType ?: videoFmt?.codecs,
             audioCodec = audioFmt?.sampleMimeType ?: audioFmt?.codecs,
             width = videoFmt?.width?.coerceAtLeast(0) ?: _videoSize.value.width,
@@ -344,6 +382,8 @@ class ExoPlayerEngine @Inject constructor(
         _bufferedPositionMs.value = 0L
         _videoSize.value = VideoSize()
         _playbackSpeed.value = 1.0f
+        activeVideoDecoderName = null
+        isVideoHwAccelerated = true
         _stats.value = defaultStats()
         val player = ensurePlayer(source.headers)
         player.setPlaybackSpeed(1.0f)
@@ -545,6 +585,8 @@ class ExoPlayerEngine @Inject constructor(
         exoPlayer?.release()
         exoPlayer = null
         configuredHeaders = null
+        activeVideoDecoderName = null
+        isVideoHwAccelerated = true
         currentSource = null
         extraSubtitles.clear()
         latestTracks = Tracks.EMPTY
