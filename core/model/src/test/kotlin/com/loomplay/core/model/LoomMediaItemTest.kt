@@ -55,7 +55,7 @@ class LoomMediaItemTest {
     @Test
     fun `theme mode hwdec and subtitle config defaults match spec`() {
         assertEquals("System", ThemeMode.SYSTEM.label)
-        assertEquals("mediacodec,mediacodec-copy", MpvHwDecMode.AUTO.mpvValue)
+        assertEquals("auto-safe", MpvHwDecMode.AUTO.mpvValue)
         assertEquals(listOf("Fit", "Fill", "Stretch", "16:9", "4:3"), AspectRatioMode.entries.map { it.label })
         val style = SubtitleStyleConfig()
         assertEquals(20f, style.fontSizeSp, 0.001f)
