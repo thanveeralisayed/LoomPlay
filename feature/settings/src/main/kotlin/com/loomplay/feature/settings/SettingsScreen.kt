@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +44,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -76,9 +78,12 @@ import androidx.lifecycle.viewModelScope
 import com.loomplay.core.data.preferences.SettingsRepository
 import com.loomplay.core.data.preferences.UserPreferences
 import com.loomplay.core.data.repository.MediaRepository
+import com.loomplay.core.data.updater.AppUpdateManager
+import com.loomplay.core.model.AppUpdateInfo
 import com.loomplay.core.model.EnginePreference
 import com.loomplay.core.model.MpvHwDecMode
 import com.loomplay.core.model.ThemeMode
+import com.loomplay.core.model.UpdateDownloadState
 import com.loomplay.core.ui.components.LoomPlayBrandLockup
 import com.loomplay.core.ui.theme.LoomColors
 import com.loomplay.core.ui.theme.TimecodeTextStyle
@@ -95,7 +100,27 @@ import kotlin.math.roundToInt
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val mediaRepository: MediaRepository,
+    private val appUpdateManager: AppUpdateManager,
 ) : ViewModel() {
+
+    val updateState = appUpdateManager.downloadState
+
+    fun checkForUpdates(currentVersionName: String) {
+        viewModelScope.launch {
+            appUpdateManager.checkForUpdates(currentVersionName)
+        }
+    }
+
+    fun downloadAndInstallUpdate(updateInfo: AppUpdateInfo, onReady: (android.net.Uri) -> Unit) {
+        viewModelScope.launch {
+            val result = appUpdateManager.downloadAndPrepareApk(updateInfo)
+            result.onSuccess(onReady)
+        }
+    }
+
+    fun resetUpdateState() {
+        appUpdateManager.resetState()
+    }
 
     val preferences = settingsRepository.userPreferences.stateIn(
         scope = viewModelScope,
@@ -237,11 +262,14 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var selectedCategory by rememberSaveable { mutableStateOf<SettingsCategory?>(null) }
 
     var confirmClearHistory by remember { mutableStateOf(false) }
     var confirmClearStreams by remember { mutableStateOf(false) }
     var storageFeedback by remember { mutableStateOf<String?>(null) }
+    var pendingUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
 
     BackHandler(enabled = selectedCategory != null) {
         selectedCategory = null
@@ -304,11 +332,19 @@ fun SettingsScreen(
                 .padding(innerPadding),
         ) { category ->
             if (category == null) {
+                val currentVersion = remember(context) {
+                    runCatching {
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                    }.getOrNull() ?: "0.1.4"
+                }
                 SettingsCategoryHub(
                     prefs = prefs,
                     onSelectCategory = {
                         storageFeedback = null
                         selectedCategory = it
+                    },
+                    onCheckForUpdates = {
+                        viewModel.checkForUpdates(currentVersion)
                     },
                 )
             } else {
@@ -352,28 +388,148 @@ fun SettingsScreen(
         )
     }
 
-    if (confirmClearStreams) {
-        AlertDialog(
-            onDismissRequest = { confirmClearStreams = false },
-            title = { Text("Clear Saved Links?") },
-            text = {
-                Text("Removes all saved network stream links and custom connection options.")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.clearNetworkStreams()
-                        confirmClearStreams = false
-                        storageFeedback = "Saved stream links cleared"
-                    },
-                ) {
-                    Text("Clear")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClearStreams = false }) { Text("Cancel") }
-            },
-        )
+    val launchInstaller: (android.net.Uri) -> Unit = { uri ->
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching {
+            context.startActivity(intent)
+        }.onFailure {
+            Toast.makeText(context, "Unable to launch installer: ${it.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    when (val state = updateState) {
+        is UpdateDownloadState.Available -> {
+            AlertDialog(
+                onDismissRequest = { viewModel.resetUpdateState() },
+                title = { Text("Update Available: v${state.updateInfo.latestVersionName}") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = if (state.updateInfo.releaseNotes.isNotBlank()) {
+                                state.updateInfo.releaseNotes
+                            } else {
+                                "A newer version of LoomPlay is available on GitHub."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 6,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = "Package: ${state.updateInfo.apkFileName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.downloadAndInstallUpdate(state.updateInfo) { uri ->
+                                launchInstaller(uri)
+                            }
+                        },
+                    ) {
+                        Text("Download & Update")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.resetUpdateState() }) {
+                        Text("Later")
+                    }
+                },
+            )
+        }
+        is UpdateDownloadState.Downloading -> {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("Downloading Update...") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LinearProgressIndicator(
+                            progress = { state.progressPercent / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = "${state.progressPercent}%",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (state.totalBytes > 0) {
+                                val mbDownloaded = state.bytesDownloaded / (1024f * 1024f)
+                                val mbTotal = state.totalBytes / (1024f * 1024f)
+                                Text(
+                                    text = "%.1f / %.1f MB".format(mbDownloaded, mbTotal),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+            )
+        }
+        is UpdateDownloadState.ReadyToInstall -> {
+            AlertDialog(
+                onDismissRequest = { viewModel.resetUpdateState() },
+                title = { Text("Update Downloaded") },
+                text = {
+                    Text("LoomPlay v${state.updateInfo.latestVersionName} is ready to install.")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val uri = runCatching { android.net.Uri.parse(state.apkUriString) }.getOrNull()
+                            if (uri != null) {
+                                launchInstaller(uri)
+                            }
+                        },
+                    ) {
+                        Text("Install Now")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.resetUpdateState() }) {
+                        Text("Close")
+                    }
+                },
+            )
+        }
+        is UpdateDownloadState.Error -> {
+            AlertDialog(
+                onDismissRequest = { viewModel.resetUpdateState() },
+                title = { Text("Update Check") },
+                text = { Text(state.message) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.resetUpdateState() }) {
+                        Text("OK")
+                    }
+                },
+            )
+        }
+        UpdateDownloadState.Checking -> {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("Checking for Updates") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        LinearProgressIndicator(modifier = Modifier.weight(1f))
+                    }
+                },
+                confirmButton = {},
+            )
+        }
+        UpdateDownloadState.Idle -> Unit
     }
 }
 
@@ -381,6 +537,7 @@ fun SettingsScreen(
 private fun SettingsCategoryHub(
     prefs: UserPreferences,
     onSelectCategory: (SettingsCategory) -> Unit,
+    onCheckForUpdates: () -> Unit,
 ) {
     val context = LocalContext.current
     val versionLabel = remember(context) {
@@ -407,6 +564,60 @@ private fun SettingsCategoryHub(
                     subtitle = versionLabel,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                 )
+            }
+        }
+        item(key = "check_updates") {
+            Surface(
+                onClick = onCheckForUpdates,
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = LoomColors.PrimaryScrub.copy(alpha = 0.14f),
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.SystemUpdate,
+                                contentDescription = null,
+                                tint = LoomColors.PrimaryScrub,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = "Check for Updates",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = "Look for new releases from GitHub",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                    )
+                }
             }
         }
         items(SettingsCategory.entries, key = { it.name }) { category ->
