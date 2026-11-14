@@ -143,6 +143,7 @@ import com.loomplay.core.model.EnginePreference
 import com.loomplay.core.model.EngineType
 import com.loomplay.core.model.LoomMediaItem
 import com.loomplay.core.model.MediaChapter
+import com.loomplay.core.model.MediaFormatQualityHelper
 import com.loomplay.core.model.MediaTracks
 import com.loomplay.core.model.PlaybackStatus
 import com.loomplay.core.model.VideoSize
@@ -950,7 +951,56 @@ private fun LandscapePlayerHudOverlay(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            if (!uiState.minimalInterface) {
+                            val videoQuality = MediaFormatQualityHelper.resolveVideoQualityBadge(
+                                width = if (stats.width > 0) stats.width else videoSize.width,
+                                height = if (stats.height > 0) stats.height else videoSize.height,
+                                colorProfile = stats.colorProfile,
+                            )
+                            val audioTech = MediaFormatQualityHelper.resolveAudioTechnologyBadge(stats.audioCodec)
+                            if (videoQuality != null || audioTech != null) {
+                                Row(
+                                    modifier = Modifier.padding(top = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    if (videoQuality != null) {
+                                        val isHdrOrDv = videoQuality.contains("DV") || videoQuality.contains("HDR")
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (isHdrOrDv) LoomColors.Primary.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.14f),
+                                            border = if (isHdrOrDv) BorderStroke(0.8.dp, LoomColors.Primary.copy(alpha = 0.6f)) else null,
+                                        ) {
+                                            Text(
+                                                text = videoQuality,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                ),
+                                                color = if (isHdrOrDv) LoomColors.Primary else Color.White,
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
+                                            )
+                                        }
+                                    }
+                                    if (audioTech != null) {
+                                        val isDolbyOrDts = audioTech.startsWith("Dolby") || audioTech.startsWith("DTS")
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (isDolbyOrDts) LoomColors.MpvCyan.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.14f),
+                                            border = if (isDolbyOrDts) BorderStroke(0.8.dp, LoomColors.MpvCyan.copy(alpha = 0.5f)) else null,
+                                        ) {
+                                            Text(
+                                                text = audioTech,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                ),
+                                                color = if (isDolbyOrDts) LoomColors.MpvCyan else Color.White,
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (!uiState.minimalInterface) {
                                 Text(
                                     text = buildTechnicalSubtitle(videoSize, stats),
                                     style = TimecodeTextStyle.tabular().copy(fontSize = 12.sp),
@@ -1265,6 +1315,9 @@ private fun LandscapePlayerHudOverlay(
                         StatsKeyValueRow("Playback Mode:", if (stats.activeEngine == EngineType.MPV) "Compatibility" else "Standard", LoomColors.MpvCyan)
                         StatsKeyValueRow("Decoder:", stats.decoderName, LoomColors.ExoEmerald)
                         StatsKeyValueRow("Resolution:", if (stats.width > 0) "${stats.width}×${stats.height}" else "Detecting", LoomColors.OnSurface)
+                        stats.colorProfile?.let { cp ->
+                            StatsKeyValueRow("Color Profile:", cp, LoomColors.Primary)
+                        }
                         StatsKeyValueRow("Frame Rate:", if (stats.fps > 0f) "%.3f fps".format(stats.fps) else "--", LoomColors.OnSurface)
                         if (stats.displayRefreshRate > 0f) {
                             val cadenceSuffix = if (stats.fps > 0f) {

@@ -80,6 +80,7 @@ data class DecoderStats(
     val isHardwareAccelerated: Boolean = false,
     val videoCodec: String? = null,
     val audioCodec: String? = null,
+    val colorProfile: String? = null,
     val width: Int = 0,
     val height: Int = 0,
     val fps: Float = 0f,

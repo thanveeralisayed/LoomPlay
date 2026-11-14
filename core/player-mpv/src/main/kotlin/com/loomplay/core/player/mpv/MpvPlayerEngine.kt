@@ -156,6 +156,15 @@ class MpvPlayerEngine @Inject constructor(
     @Volatile
     private var latestAudioCodec: String? = null
 
+    @Volatile
+    private var latestGamma: String? = null
+
+    @Volatile
+    private var latestColorMatrix: String? = null
+
+    @Volatile
+    private var latestPrimaries: String? = null
+
     fun configureMpvOptions(hwDec: MpvHwDecMode, customConfig: String) {
         hwDecMode = hwDec
         customConfigText = customConfig
@@ -269,6 +278,9 @@ class MpvPlayerEngine @Inject constructor(
         instance.observeProperty("video-codec", MPVLib.MpvFormat.MPV_FORMAT_STRING)
         instance.observeProperty("video-format", MPVLib.MpvFormat.MPV_FORMAT_STRING)
         instance.observeProperty("audio-codec-name", MPVLib.MpvFormat.MPV_FORMAT_STRING)
+        instance.observeProperty("video-params/gamma", MPVLib.MpvFormat.MPV_FORMAT_STRING)
+        instance.observeProperty("video-params/colormatrix", MPVLib.MpvFormat.MPV_FORMAT_STRING)
+        instance.observeProperty("video-params/primaries", MPVLib.MpvFormat.MPV_FORMAT_STRING)
     }
 
     private val surfaceCallback = object : SurfaceHolder.Callback {
@@ -996,6 +1008,18 @@ class MpvPlayerEngine @Inject constructor(
                     latestAudioCodec = value.ifBlank { null }
                     updateDecoderDescriptor()
                 }
+                "video-params/gamma" -> {
+                    latestGamma = value.ifBlank { null }
+                    updateDecoderDescriptor()
+                }
+                "video-params/colormatrix" -> {
+                    latestColorMatrix = value.ifBlank { null }
+                    updateDecoderDescriptor()
+                }
+                "video-params/primaries" -> {
+                    latestPrimaries = value.ifBlank { null }
+                    updateDecoderDescriptor()
+                }
             }
         }
 
@@ -1050,12 +1074,24 @@ class MpvPlayerEngine @Inject constructor(
     private fun updateDecoderDescriptor() {
         val hwdec = latestHwDecCurrent
         val isHw = hwdec.isNotBlank() && hwdec != "no"
+        val gamma = latestGamma?.lowercase().orEmpty()
+        val matrix = latestColorMatrix?.lowercase().orEmpty()
+        val primaries = latestPrimaries?.lowercase().orEmpty()
+        val colorProfile = when {
+            matrix.contains("dolby") || gamma.contains("dolby") -> "Dolby Vision"
+            gamma.contains("pq") || gamma.contains("st2084") || gamma.contains("smpte2084") -> "HDR10"
+            gamma.contains("hlg") || gamma.contains("arib") -> "HLG"
+            primaries.contains("bt.2020") || matrix.contains("bt.2020") -> "HDR"
+            else -> null
+        }
+
         _stats.update { current ->
             current.copy(
                 decoderName = if (isHw) "libmpv • $hwdec" else "libmpv • SW",
                 isHardwareAccelerated = isHw,
                 videoCodec = latestVideoCodec ?: latestVideoFormat,
                 audioCodec = latestAudioCodec,
+                colorProfile = colorProfile,
                 audioEngine = "AudioTrack / OpenSL",
                 renderSurface = "OpenGL ES (gpu)",
             )

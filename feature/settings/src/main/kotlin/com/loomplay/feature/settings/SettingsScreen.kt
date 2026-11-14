@@ -343,7 +343,7 @@ fun SettingsScreen(
                 val currentVersion = remember(context) {
                     runCatching {
                         context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                    }.getOrNull() ?: "0.1.6"
+                    }.getOrNull() ?: "0.1.7"
                 }
                 SettingsCategoryHub(
                     prefs = prefs,

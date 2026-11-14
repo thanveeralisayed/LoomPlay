@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Metadata
 import androidx.media3.common.MimeTypes
@@ -360,12 +361,24 @@ class ExoPlayerEngine @Inject constructor(
             true
         }
 
+        val colorInfo = videoFmt?.colorInfo
+        val colorProfile = when {
+            videoFmt?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION ||
+                videoFmt?.codecs?.contains("dvh", ignoreCase = true) == true ||
+                videoFmt?.codecs?.contains("dva", ignoreCase = true) == true -> "Dolby Vision"
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10"
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG"
+            colorInfo != null && ColorInfo.isTransferHdr(colorInfo) -> "HDR"
+            else -> null
+        }
+
         _stats.value = DecoderStats(
             activeEngine = EngineType.EXOPLAYER,
             decoderName = decoderName,
             isHardwareAccelerated = isHw,
             videoCodec = videoFmt?.sampleMimeType ?: videoFmt?.codecs,
             audioCodec = audioFmt?.sampleMimeType ?: audioFmt?.codecs,
+            colorProfile = colorProfile,
             width = videoFmt?.width?.coerceAtLeast(0) ?: _videoSize.value.width,
             height = videoFmt?.height?.coerceAtLeast(0) ?: _videoSize.value.height,
             fps = videoFmt?.frameRate?.takeIf { it > 0f } ?: 0f,
