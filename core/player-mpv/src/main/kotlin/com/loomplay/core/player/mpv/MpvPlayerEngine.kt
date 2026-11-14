@@ -314,6 +314,7 @@ class MpvPlayerEngine @Inject constructor(
 
     override fun attachSurfaceView(container: FrameLayout) {
         val view = surfaceView ?: SurfaceView(container.context).apply {
+            keepScreenOn = true
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,

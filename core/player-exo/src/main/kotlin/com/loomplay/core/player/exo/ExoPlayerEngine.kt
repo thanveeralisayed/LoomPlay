@@ -410,6 +410,7 @@ class ExoPlayerEngine @Inject constructor(
         val player = ensurePlayer(currentSource?.headers ?: emptyMap(), isNetwork = isNetwork)
         val view = playerView ?: LoomPlayerView(container.context).apply {
             useController = false
+            keepScreenOn = true
             setEnableComposeSurfaceSyncWorkaround(true)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

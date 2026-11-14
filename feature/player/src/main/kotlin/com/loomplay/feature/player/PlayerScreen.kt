@@ -338,12 +338,18 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(activity, isInPictureInPictureMode) {
+    LaunchedEffect(activity, isInPictureInPictureMode, status) {
         val act = activity ?: return@LaunchedEffect
+        val isPlaying = status == PlaybackStatus.PLAYING || status == PlaybackStatus.BUFFERING
         if (!isInPictureInPictureMode) {
             act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
         act.window?.let { window ->
+            if (isPlaying && !isInPictureInPictureMode) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
             val controller = WindowCompat.getInsetsController(window, window.decorView)
             if (!isInPictureInPictureMode) {
                 controller.systemBarsBehavior =
@@ -367,6 +373,7 @@ fun PlayerScreen(
         onDispose {
             viewModel.persistProgressNow()
             activity?.window?.let { window ->
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.show(WindowInsetsCompat.Type.systemBars())
                 val lp = window.attributes
@@ -429,6 +436,7 @@ fun PlayerScreen(
                     FrameLayout(ctx).apply {
                         clipChildren = true
                         clipToPadding = true
+                        keepScreenOn = true
                         videoHostView = this
                         viewModel.attachSurface(this)
                     }
