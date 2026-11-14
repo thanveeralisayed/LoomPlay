@@ -6,6 +6,7 @@ import com.loomplay.core.model.AspectRatioMode
 import com.loomplay.core.model.DecoderStats
 import com.loomplay.core.model.EnginePreference
 import com.loomplay.core.model.EngineType
+import com.loomplay.core.model.FrameRateMatchingMode
 import com.loomplay.core.model.MediaChapter
 import com.loomplay.core.model.MediaTracks
 import com.loomplay.core.model.PlaybackStatus
@@ -92,6 +93,7 @@ interface ILoomPlayer {
     fun setAspectRatio(mode: AspectRatioMode)
     fun setSubtitleStyle(style: SubtitleStyleConfig) {}
     fun setVolumeFraction(fraction: Float) {}
+    fun setFrameRateMatchingMode(mode: FrameRateMatchingMode) {}
     fun release()
 }
 

@@ -5,6 +5,7 @@ import android.widget.FrameLayout
 import com.loomplay.core.model.AspectRatioMode
 import com.loomplay.core.model.EnginePreference
 import com.loomplay.core.model.EngineType
+import com.loomplay.core.model.FrameRateMatchingMode
 import com.loomplay.core.model.MediaChapter
 import com.loomplay.core.model.MpvHwDecMode
 import com.loomplay.core.model.PlaybackStatus
@@ -115,6 +116,7 @@ class PlayerManager internal constructor(
     private var pendingSubtitleDelayMs: Long = 0L
     private var pendingAudioDelayMs: Long = 0L
     private var pendingVolumeFraction: Float = 1.0f
+    private var pendingFrameRateMatchingMode: FrameRateMatchingMode = FrameRateMatchingMode.SEAMLESS
 
     private var onSkipToNextCallback: (() -> Unit)? = null
     private var onSkipToPreviousCallback: (() -> Unit)? = null
@@ -335,6 +337,7 @@ class PlayerManager internal constructor(
         engine.setAspectRatio(lastAspectRatio)
         engine.setSubtitleStyle(lastSubtitleStyle)
         engine.setVolumeFraction(pendingVolumeFraction)
+        engine.setFrameRateMatchingMode(pendingFrameRateMatchingMode)
         engine.setSubtitleDelay(pendingSubtitleDelayMs)
         engine.setAudioDelay(pendingAudioDelayMs)
     }
@@ -412,6 +415,12 @@ class PlayerManager internal constructor(
         lastSubtitleStyle = style
         exoEngine.setSubtitleStyle(style)
         mpvEngine.setSubtitleStyle(style)
+    }
+
+    fun setFrameRateMatchingMode(mode: FrameRateMatchingMode) {
+        pendingFrameRateMatchingMode = mode
+        exoEngine.setFrameRateMatchingMode(mode)
+        mpvEngine.setFrameRateMatchingMode(mode)
     }
 
     override fun setAudioFocusDucked(ducked: Boolean) {

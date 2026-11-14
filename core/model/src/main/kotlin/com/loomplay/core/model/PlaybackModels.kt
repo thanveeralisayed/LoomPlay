@@ -26,6 +26,12 @@ enum class AspectRatioMode(val label: String) {
     RATIO_4_3("4:3"),
 }
 
+enum class FrameRateMatchingMode(val label: String) {
+    OFF("Disabled"),
+    SEAMLESS("Seamless Only"),
+    ALWAYS("Always"),
+}
+
 enum class ThemeMode(val label: String) {
     SYSTEM("System"),
     LIGHT("Light"),
@@ -84,6 +90,7 @@ data class DecoderStats(
     val bufferAheadSec: Float = 0f,
     val audioEngine: String = "AudioTrack",
     val renderSurface: String = "SurfaceView",
+    val displayRefreshRate: Float = 0f,
 )
 
 data class LoomMediaItem(

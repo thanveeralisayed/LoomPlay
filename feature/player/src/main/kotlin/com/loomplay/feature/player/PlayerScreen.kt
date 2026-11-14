@@ -1250,6 +1250,22 @@ private fun LandscapePlayerHudOverlay(
                         StatsKeyValueRow("Decoder:", stats.decoderName, LoomColors.ExoEmerald)
                         StatsKeyValueRow("Resolution:", if (stats.width > 0) "${stats.width}×${stats.height}" else "Detecting", LoomColors.OnSurface)
                         StatsKeyValueRow("Frame Rate:", if (stats.fps > 0f) "%.3f fps".format(stats.fps) else "--", LoomColors.OnSurface)
+                        if (stats.displayRefreshRate > 0f) {
+                            val cadenceSuffix = if (stats.fps > 0f) {
+                                val ratio = stats.displayRefreshRate / stats.fps
+                                val rounded = kotlin.math.round(ratio).toInt()
+                                if (kotlin.math.abs(ratio - rounded) < 0.05f && rounded >= 1) {
+                                    " • %d:%d Match".format(rounded, rounded)
+                                } else {
+                                    ""
+                                }
+                            } else ""
+                            StatsKeyValueRow(
+                                "Display:",
+                                "%.0f Hz%s".format(stats.displayRefreshRate, cadenceSuffix),
+                                LoomColors.ExoEmeraldBright,
+                            )
+                        }
                         StatsKeyValueRow("Bitrate:", if (stats.bitrateMbps > 0f) "%.1f Mbps".format(stats.bitrateMbps) else "Variable", LoomColors.OnSurface)
                         StatsKeyValueRow("Audio Engine:", stats.audioEngine, LoomColors.OnSurface)
                         StatsKeyValueRow("Buffer Ahead:", "%.1fs".format(stats.bufferAheadSec), LoomColors.Primary)

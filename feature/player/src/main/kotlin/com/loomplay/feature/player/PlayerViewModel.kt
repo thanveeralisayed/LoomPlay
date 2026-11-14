@@ -190,6 +190,7 @@ class PlayerViewModel @Inject constructor(
                 val bgChangedFromPrefs = lastPrefBgAudio != prefs.backgroundAudioEnabled
                 lastPrefBgAudio = prefs.backgroundAudioEnabled
                 playerManager.setSubtitleStyle(prefs.subtitleStyleConfig)
+                playerManager.setFrameRateMatchingMode(prefs.frameRateMatchingMode)
                 _uiState.update { state ->
                     val nextBgAudio = if (bgChangedFromPrefs) prefs.backgroundAudioEnabled else state.backgroundAudioEnabled
                     if (playerManager.isActiveOwner(ownerToken)) {
