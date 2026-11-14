@@ -72,6 +72,15 @@ class LoomMediaItemTest {
     }
 
     @Test
+    fun `frame rate matching mode options and default stats are correct`() {
+        assertEquals("Disabled", FrameRateMatchingMode.OFF.label)
+        assertEquals("Seamless Only", FrameRateMatchingMode.SEAMLESS.label)
+        assertEquals("Always", FrameRateMatchingMode.ALWAYS.label)
+        val stats = DecoderStats()
+        assertEquals(0f, stats.displayRefreshRate, 0.001f)
+    }
+
+    @Test
     fun `sortedByOrder sorts library items deterministically`() {
         val a = LoomMediaItem("u1", "zeta.mp4", "Movies", durationMs = 10_000L, fileSizeBytes = 500L, dateAddedEpochSec = 100L)
         val b = LoomMediaItem("u2", "Alpha.mp4", "Movies", durationMs = 50_000L, fileSizeBytes = 200L, dateAddedEpochSec = 300L)

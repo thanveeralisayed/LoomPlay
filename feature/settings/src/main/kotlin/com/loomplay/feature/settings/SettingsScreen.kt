@@ -81,6 +81,7 @@ import com.loomplay.core.data.repository.MediaRepository
 import com.loomplay.core.data.updater.AppUpdateManager
 import com.loomplay.core.model.AppUpdateInfo
 import com.loomplay.core.model.EnginePreference
+import com.loomplay.core.model.FrameRateMatchingMode
 import com.loomplay.core.model.MpvHwDecMode
 import com.loomplay.core.model.ThemeMode
 import com.loomplay.core.model.UpdateDownloadState
@@ -138,6 +139,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setMpvHwDecMode(mode: MpvHwDecMode) {
         viewModelScope.launch { settingsRepository.setMpvHwDecMode(mode) }
+    }
+
+    fun setFrameRateMatchingMode(mode: FrameRateMatchingMode) {
+        viewModelScope.launch { settingsRepository.setFrameRateMatchingMode(mode) }
     }
 
     fun setMpvCustomConfig(config: String) {
@@ -335,7 +340,7 @@ fun SettingsScreen(
                 val currentVersion = remember(context) {
                     runCatching {
                         context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                    }.getOrNull() ?: "0.1.4"
+                    }.getOrNull() ?: "0.1.5"
                 }
                 SettingsCategoryHub(
                     prefs = prefs,
@@ -874,6 +879,33 @@ private fun SettingsCategoryDetail(
                             enabled = !prefs.backgroundAudioEnabled,
                             onCheckedChange = viewModel::setPipAutoEnter,
                         )
+                    }
+                }
+
+                item {
+                    SettingsGroupCard(title = "MATCH FRAME RATE (JUDDER-FREE)") {
+                        Text(
+                            text = "Matches the display refresh rate to the video's frame rate to eliminate 3:2 pulldown judder during movies. 'Seamless' only changes refresh rate if your screen supports flicker-free VRR.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            FrameRateMatchingMode.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = prefs.frameRateMatchingMode == mode,
+                                    onClick = { viewModel.setFrameRateMatchingMode(mode) },
+                                    label = { Text(mode.label) },
+                                    shape = CircleShape,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                    ),
+                                )
+                            }
+                        }
                     }
                 }
 

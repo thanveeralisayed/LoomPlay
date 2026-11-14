@@ -2,14 +2,18 @@ package com.loomplay.core.player.mpv
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import com.loomplay.core.model.AspectRatioMode
 import com.loomplay.core.model.DecoderStats
 import com.loomplay.core.model.EngineType
+import com.loomplay.core.model.FrameRateMatchingMode
 import com.loomplay.core.model.MediaChapter
 import com.loomplay.core.model.MediaTrack
 import com.loomplay.core.model.MediaTracks
@@ -110,6 +114,7 @@ class MpvPlayerEngine @Inject constructor(
     private var appliedCustomConfig: String? = null
     private var subtitleStyle: SubtitleStyleConfig = SubtitleStyleConfig()
     private var activeAspectMode: AspectRatioMode = AspectRatioMode.FIT
+    private var frameRateMatchingMode: FrameRateMatchingMode = FrameRateMatchingMode.SEAMLESS
     private var activeVolumeFraction: Float = 1.0f
 
     @Volatile
@@ -248,6 +253,7 @@ class MpvPlayerEngine @Inject constructor(
         instance.observeProperty("duration", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
         instance.observeProperty("demuxer-cache-duration", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
         instance.observeProperty("estimated-vf-fps", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
+        instance.observeProperty("container-fps", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
         instance.observeProperty("video-bitrate", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
         instance.observeProperty("pause", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
         instance.observeProperty("paused-for-cache", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
@@ -276,6 +282,7 @@ class MpvPlayerEngine @Inject constructor(
                     instance.setPropertyString("vo", "gpu")
                     applyAspectRatioLocked(instance, activeAspectMode)
                 }
+                updateSurfaceFrameRateLocked()
             }
         }
 
@@ -290,6 +297,7 @@ class MpvPlayerEngine @Inject constructor(
         override fun surfaceDestroyed(holder: SurfaceHolder) {
             synchronized(mpvLock) {
                 if (activeHolder === holder) {
+                    clearSurfaceFrameRate(holder.surface)
                     activeHolder = null
                     if (isSurfaceReady) {
                         isSurfaceReady = false
@@ -322,6 +330,7 @@ class MpvPlayerEngine @Inject constructor(
 
     override fun detachSurfaceView() {
         synchronized(mpvLock) {
+            clearSurfaceFrameRate(activeHolder?.surface)
             if (isSurfaceReady) {
                 runCatching {
                     mpv?.setPropertyString("vo", "null")
@@ -485,6 +494,9 @@ class MpvPlayerEngine @Inject constructor(
 
     override fun setPlaybackSpeed(speed: Float) {
         _playbackSpeed.value = speed
+        synchronized(mpvLock) {
+            updateSurfaceFrameRateLocked()
+        }
         val gen = engineGeneration.get()
         mpvScope.launch {
             if (gen != engineGeneration.get()) return@launch
@@ -695,6 +707,65 @@ class MpvPlayerEngine @Inject constructor(
         }
     }
 
+    override fun setFrameRateMatchingMode(mode: FrameRateMatchingMode) {
+        frameRateMatchingMode = mode
+        synchronized(mpvLock) {
+            updateSurfaceFrameRateLocked()
+        }
+    }
+
+    private fun updateSurfaceFrameRateLocked() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val surface = activeHolder?.surface?.takeIf { it.isValid } ?: return
+        if (frameRateMatchingMode == FrameRateMatchingMode.OFF || isPausedFlag || isEofReached) {
+            clearSurfaceFrameRate(surface)
+            return
+        }
+        val fps = _stats.value.fps
+        if (fps <= 0f) return
+        val speed = _playbackSpeed.value.coerceAtLeast(0.1f)
+        val targetFps = fps * speed
+        val strategy = if (frameRateMatchingMode == FrameRateMatchingMode.ALWAYS && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Surface.CHANGE_FRAME_RATE_ALWAYS
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS
+        } else {
+            0
+        }
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                surface.setFrameRate(targetFps, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, strategy)
+            } else {
+                surface.setFrameRate(targetFps, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)
+            }
+        }
+    }
+
+    private fun clearSurfaceFrameRate(surface: Surface?) {
+        if (surface == null || !surface.isValid) return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                surface.clearFrameRate()
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                surface.setFrameRate(0f, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)
+            }
+        }
+    }
+
+    private fun resolveDisplayRefreshRate(): Float {
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.display?.refreshRate
+            } else {
+                @Suppress("DEPRECATION")
+                (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay?.refreshRate
+            }
+        }.getOrNull() ?: runCatching {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay?.refreshRate
+        }.getOrNull() ?: 0f
+    }
+
     private fun applySubtitleStyleOptions(applyOption: (String, String) -> Unit) {
         val style = subtitleStyle
         applyOption("sub-scale", String.format(Locale.US, "%.2f", (style.fontSizeSp / 20.0).coerceIn(0.5, 2.2)))
@@ -833,8 +904,19 @@ class MpvPlayerEngine @Inject constructor(
                     _bufferedPositionMs.value = pos + (value * 1000.0).toLong().coerceAtLeast(0L)
                     _stats.update { it.copy(bufferAheadSec = cacheSec) }
                 }
-                "estimated-vf-fps" -> {
-                    _stats.update { it.copy(fps = value.toFloat().coerceAtLeast(0f)) }
+                "estimated-vf-fps", "container-fps" -> {
+                    val fpsVal = value.toFloat().coerceAtLeast(0f)
+                    if (fpsVal > 0f) {
+                        _stats.update {
+                            it.copy(
+                                fps = fpsVal,
+                                displayRefreshRate = resolveDisplayRefreshRate(),
+                            )
+                        }
+                        synchronized(mpvLock) {
+                            updateSurfaceFrameRateLocked()
+                        }
+                    }
                 }
                 "video-bitrate" -> {
                     val mbps = (value / 1_000_000.0).toFloat().coerceAtLeast(0f)
@@ -847,6 +929,13 @@ class MpvPlayerEngine @Inject constructor(
             when (property) {
                 "pause" -> {
                     isPausedFlag = value
+                    synchronized(mpvLock) {
+                        if (value) {
+                            clearSurfaceFrameRate(activeHolder?.surface)
+                        } else {
+                            updateSurfaceFrameRateLocked()
+                        }
+                    }
                     if (hadLoadedCurrentFile && !isPausedForCache) {
                         if (!isEofReached) {
                             _playbackState.value = if (value) PlaybackStatus.PAUSED else PlaybackStatus.PLAYING
@@ -871,6 +960,9 @@ class MpvPlayerEngine @Inject constructor(
                 "eof-reached" -> {
                     isEofReached = value
                     if (value) {
+                        synchronized(mpvLock) {
+                            clearSurfaceFrameRate(activeHolder?.surface)
+                        }
                         _playbackState.value = PlaybackStatus.ENDED
                     } else if (hadLoadedCurrentFile && _playbackState.value == PlaybackStatus.ENDED && !isPausedForCache) {
                         _playbackState.value = if (isPausedFlag) PlaybackStatus.PAUSED else PlaybackStatus.PLAYING

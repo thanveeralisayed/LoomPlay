@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.loomplay.core.model.EnginePreference
+import com.loomplay.core.model.FrameRateMatchingMode
 import com.loomplay.core.model.LibrarySortOrder
 import com.loomplay.core.model.MpvHwDecMode
 import com.loomplay.core.model.NetworkStreamEntry
@@ -38,6 +39,7 @@ data class UserPreferences(
     val defaultEngine: EnginePreference = EnginePreference.AUTO,
     val autoFallbackEnabled: Boolean = true,
     val mpvHwDecMode: MpvHwDecMode = MpvHwDecMode.AUTO,
+    val frameRateMatchingMode: FrameRateMatchingMode = FrameRateMatchingMode.SEAMLESS,
     val themeMode: ThemeMode = ThemeMode.DARK,
     val amoledDarkMode: Boolean = false,
     val dynamicColorEnabled: Boolean = false,
@@ -83,6 +85,7 @@ class SettingsRepository @Inject constructor(
         val DEFAULT_ENGINE = stringPreferencesKey("default_engine")
         val AUTO_FALLBACK = booleanPreferencesKey("auto_fallback")
         val MPV_HWDEC = stringPreferencesKey("mpv_hwdec")
+        val FRAME_RATE_MATCHING_MODE = stringPreferencesKey("frame_rate_matching_mode")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val AMOLED_DARK_MODE = booleanPreferencesKey("amoled_dark_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -143,6 +146,9 @@ class SettingsRepository @Inject constructor(
             mpvHwDecMode = prefs[Keys.MPV_HWDEC]?.let {
                 runCatching { MpvHwDecMode.valueOf(it) }.getOrNull()
             } ?: MpvHwDecMode.AUTO,
+            frameRateMatchingMode = prefs[Keys.FRAME_RATE_MATCHING_MODE]?.let {
+                runCatching { FrameRateMatchingMode.valueOf(it) }.getOrNull()
+            } ?: FrameRateMatchingMode.SEAMLESS,
             themeMode = prefs[Keys.THEME_MODE]?.let {
                 runCatching { ThemeMode.valueOf(it) }.getOrNull()
             } ?: ThemeMode.DARK,
@@ -180,6 +186,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setMpvHwDecMode(mode: MpvHwDecMode) {
         context.userPrefsDataStore.edit { it[Keys.MPV_HWDEC] = mode.name }
+    }
+
+    suspend fun setFrameRateMatchingMode(mode: FrameRateMatchingMode) {
+        context.userPrefsDataStore.edit { it[Keys.FRAME_RATE_MATCHING_MODE] = mode.name }
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {

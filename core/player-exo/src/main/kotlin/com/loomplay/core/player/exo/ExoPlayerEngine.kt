@@ -3,8 +3,11 @@ package com.loomplay.core.player.exo
 import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import android.os.Build
 import android.util.TypedValue
+import android.view.Surface
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -35,6 +38,7 @@ import androidx.media3.ui.PlayerView
 import com.loomplay.core.model.AspectRatioMode
 import com.loomplay.core.model.DecoderStats
 import com.loomplay.core.model.EngineType
+import com.loomplay.core.model.FrameRateMatchingMode
 import com.loomplay.core.model.MediaChapter
 import com.loomplay.core.model.MediaTrack
 import com.loomplay.core.model.MediaTracks
@@ -109,6 +113,7 @@ class ExoPlayerEngine @Inject constructor(
     private var activeAspectMode: AspectRatioMode = AspectRatioMode.FIT
     private var activeSubtitleStyle: SubtitleStyleConfig = SubtitleStyleConfig()
     private var activeVolumeFraction: Float = 1.0f
+    private var activeFrameRateMatchingMode: FrameRateMatchingMode = FrameRateMatchingMode.SEAMLESS
     private val extraSubtitles = mutableListOf<MediaItem.SubtitleConfiguration>()
     private var activeVideoDecoderName: String? = null
     private var isVideoHwAccelerated: Boolean = true
@@ -168,6 +173,7 @@ class ExoPlayerEngine @Inject constructor(
             .build()
             .apply {
                 volume = activeVolumeFraction
+                videoChangeFrameRateStrategy = toExoFrameRateStrategy(activeFrameRateMatchingMode)
                 if (preservedTrackParams != null) {
                     trackSelectionParameters = preservedTrackParams
                 }
@@ -344,7 +350,22 @@ class ExoPlayerEngine @Inject constructor(
             bufferAheadSec = ((buf - pos).coerceAtLeast(0L)) / 1000f,
             audioEngine = "AudioTrack",
             renderSurface = "SurfaceView",
+            displayRefreshRate = resolveDisplayRefreshRate(),
         )
+    }
+
+    private fun resolveDisplayRefreshRate(): Float {
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.display?.refreshRate
+            } else {
+                @Suppress("DEPRECATION")
+                (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay?.refreshRate
+            }
+        }.getOrNull() ?: runCatching {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay?.refreshRate
+        }.getOrNull() ?: 0f
     }
 
     private fun updateTicker(active: Boolean) {
@@ -571,6 +592,21 @@ class ExoPlayerEngine @Inject constructor(
     override fun setVolumeFraction(fraction: Float) {
         activeVolumeFraction = fraction.coerceIn(0f, 1f)
         exoPlayer?.volume = activeVolumeFraction
+    }
+
+    override fun setFrameRateMatchingMode(mode: FrameRateMatchingMode) {
+        activeFrameRateMatchingMode = mode
+        exoPlayer?.videoChangeFrameRateStrategy = toExoFrameRateStrategy(mode)
+    }
+
+    private fun toExoFrameRateStrategy(mode: FrameRateMatchingMode): Int = when (mode) {
+        FrameRateMatchingMode.OFF -> C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
+        FrameRateMatchingMode.SEAMLESS -> C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
+        FrameRateMatchingMode.ALWAYS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Surface.CHANGE_FRAME_RATE_ALWAYS
+        } else {
+            C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
+        }
     }
 
     @OptIn(UnstableApi::class)
