@@ -31,7 +31,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -153,6 +158,11 @@ fun LoomScrubberBar(
 
     val displayedFraction = if (isDragging && hasDuration) dragFraction else actualProgress
 
+    val trackBgColor = remember { Color.White.copy(alpha = 0.22f) }
+    val bufferedColor = remember { Color.White.copy(alpha = 0.40f) }
+    val progressColor = LoomColors.PrimaryContainer
+    val chapterNotchColor = remember { Color.Black.copy(alpha = 0.7f) }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -187,71 +197,75 @@ fun LoomScrubberBar(
                 } else {
                     Modifier
                 },
-            ),
+            )
+            .drawBehind {
+                val trackHeight = if (isDragging) 6.dp.toPx() else 4.dp.toPx()
+                val topY = (size.height - trackHeight) / 2f
+                val corner = CornerRadius(trackHeight / 2f, trackHeight / 2f)
+
+                // 1. Base Track
+                drawRoundRect(
+                    color = trackBgColor,
+                    topLeft = Offset(0f, topY),
+                    size = Size(size.width, trackHeight),
+                    cornerRadius = corner,
+                )
+
+                // 2. Buffered Progress
+                if (bufferedProgress > 0f) {
+                    drawRoundRect(
+                        color = bufferedColor,
+                        topLeft = Offset(0f, topY),
+                        size = Size(size.width * bufferedProgress, trackHeight),
+                        cornerRadius = corner,
+                    )
+                }
+
+                // 3. Playback Progress
+                if (displayedFraction > 0f) {
+                    drawRoundRect(
+                        color = progressColor,
+                        topLeft = Offset(0f, topY),
+                        size = Size(size.width * displayedFraction, trackHeight),
+                        cornerRadius = corner,
+                    )
+                }
+
+                // 4. Chapter notches
+                val notchWidth = 2.dp.toPx()
+                val notchHeight = 6.dp.toPx()
+                val notchTopY = (size.height - notchHeight) / 2f
+                chapterFractions.forEach { frac ->
+                    val clamped = frac.coerceIn(0.02f, 0.98f)
+                    val notchX = size.width * clamped - (notchWidth / 2f)
+                    drawRect(
+                        color = chapterNotchColor,
+                        topLeft = Offset(notchX, notchTopY),
+                        size = Size(notchWidth, notchHeight),
+                    )
+                }
+            },
         contentAlignment = Alignment.CenterStart,
     ) {
-        // Track
+        // Scrubber Thumb with lambda-based graphicsLayer offset for 60fps/120fps hardware movement without recomposing
+        val thumbRadiusPx = if (isDragging) 9.dp else 6.5.dp
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isDragging) 6.dp else 4.dp)
+                .graphicsLayer {
+                    val thumbW = (thumbRadiusPx * 2).toPx()
+                    translationX = ((widthPx - thumbW) * displayedFraction).coerceAtLeast(0f)
+                }
+                .size(if (isDragging) 18.dp else 13.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.22f)),
+                .background(Color.White),
+            contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(bufferedProgress)
-                    .fillMaxHeight()
-                    .background(Color.White.copy(alpha = 0.40f)),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(displayedFraction)
-                    .fillMaxHeight()
+                    .size(if (isDragging) 8.dp else 6.dp)
+                    .clip(CircleShape)
                     .background(LoomColors.PrimaryContainer),
             )
-        }
-
-        // Chapter notches
-        chapterFractions.forEach { frac ->
-            val clamped = frac.coerceIn(0.02f, 0.98f)
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Spacer(modifier = Modifier.weight(clamped))
-                Box(
-                    modifier = Modifier
-                        .width(2.dp)
-                        .height(6.dp)
-                        .background(Color.Black.copy(alpha = 0.7f)),
-                )
-                Spacer(modifier = Modifier.weight(1f - clamped))
-            }
-        }
-
-        // Thumb
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (displayedFraction > 0.001f) {
-                Spacer(modifier = Modifier.weight(displayedFraction))
-            }
-            Box(
-                modifier = Modifier
-                    .size(if (isDragging) 18.dp else 13.dp)
-                    .clip(CircleShape)
-                    .background(Color.White),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(if (isDragging) 8.dp else 6.dp)
-                        .clip(CircleShape)
-                        .background(LoomColors.PrimaryContainer),
-                )
-            }
-            if (displayedFraction < 0.999f) {
-                Spacer(modifier = Modifier.weight(1f - displayedFraction))
-            }
         }
     }
 }

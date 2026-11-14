@@ -1,0 +1,87 @@
+# LoomPlay Baseline Profile
+# Critical User Journeys:
+# 1. App Cold Startup & Activity Lifecycle
+# 2. Main Compose UI / Compose Navigation / Routing Host
+# 3. MediaStore Video Scanning & Library Screen Grid/List Scroll
+# 4. Media3 ExoPlayer Engine Creation, Preparation, Audio/Video Pipeline
+# 5. MediaSession / Background Playback / Picture-in-Picture Transitions
+
+# --- 1. APP STARTUP & RUNTIME INITIALIZATION ---
+Lcom/loomplay/app/LoomPlayApplication;
+HSPLcom/loomplay/app/LoomPlayApplication;-><init>()V
+HSPLcom/loomplay/app/LoomPlayApplication;->onCreate()V
+HSPLcom/loomplay/app/LoomPlayApplication;->newImageLoader(Lcoil3/PlatformContext;)Lcoil3/ImageLoader;
+Lcom/loomplay/app/MainActivity;
+HSPLcom/loomplay/app/MainActivity;-><init>()V
+HSPLcom/loomplay/app/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/loomplay/app/MainActivity;->onStart()V
+HSPLcom/loomplay/app/MainActivity;->onResume()V
+HSPLcom/loomplay/app/MainActivity;->onUserLeaveHint()V
+HSPLcom/loomplay/app/MainActivity;->onPictureInPictureModeChanged(ZLandroid/content/res/Configuration;)V
+
+# --- 2. COMPOSE RUNTIME & SYSTEM DISPATCH ---
+HSPLandroidx/compose/runtime/ComposerImpl;->updateValue(Ljava/lang/Object;)V
+HSPLandroidx/compose/runtime/ComposerImpl;->updatedNodeCount(I)V
+HSPLandroidx/compose/runtime/CompositionImpl;->applyChanges()V
+HSPLandroidx/compose/ui/platform/ComposeView;->setContent(Lkotlin/jvm/functions/Function2;)V
+HSPLandroidx/compose/ui/node/LayoutNode;->layout(II)V
+HSPLandroidx/compose/ui/node/LayoutNode;->draw(Landroidx/compose/ui/graphics/Canvas;Landroidx/compose/ui/graphics/layer/GraphicsLayer;)V
+HSPLandroidx/navigation/NavController;->navigate(Ljava/lang/String;)V
+HSPLandroidx/navigation/compose/NavHostKt;->NavHost(Landroidx/navigation/NavHostController;Ljava/lang/String;Landroidx/compose/ui/Modifier;Landroidx/compose/ui/Alignment;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+
+# --- 3. LIBRARY SCREEN & THUMBNAIL LAZY LOADING ---
+Lcom/loomplay/feature/library/LibraryScreenKt;
+HSPLcom/loomplay/feature/library/LibraryScreenKt;->LibraryScreen(Lkotlin/jvm/functions/Function5;Lkotlin/jvm/functions/Function0;Landroidx/compose/ui/Modifier;Lcom/loomplay/feature/library/LibraryViewModel;)V
+Lcom/loomplay/feature/library/LibraryViewModel;
+HSPLcom/loomplay/feature/library/LibraryViewModel;-><init>(Lcom/loomplay/core/data/repository/MediaRepository;Lcom/loomplay/core/data/repository/SettingsRepository;Lcom/loomplay/core/data/media/MediaStoreVideoScanner;)V
+Lcom/loomplay/core/data/media/MediaStoreVideoScanner;
+HSPLcom/loomplay/core/data/media/MediaStoreVideoScanner;->observeVideos()Lkotlinx/coroutines/flow/Flow;
+Lcom/loomplay/core/ui/image/LoomImageLoader;
+HSPLcom/loomplay/core/ui/image/LoomImageLoader;->build(Landroid/content/Context;)Lcoil3/ImageLoader;
+Lcom/loomplay/core/ui/image/MediaThumbnailFetcher;
+HSPLcom/loomplay/core/ui/image/MediaThumbnailFetcher;->fetch()Lcoil3/fetch/FetchResult;
+Lcom/loomplay/core/ui/image/MediaThumbnailKeyer;
+HSPLcom/loomplay/core/ui/image/MediaThumbnailKeyer;->key(Landroid/net/Uri;Lcoil3/request/Options;)Ljava/lang/String;
+
+# --- 4. PLAYER SCREEN & GESTURE PIPELINE ---
+Lcom/loomplay/feature/player/PlayerScreenKt;
+HSPLcom/loomplay/feature/player/PlayerScreenKt;->PlayerScreen(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/loomplay/core/model/EnginePreference;Ljava/util/Map;Ljava/lang/Long;ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Ljava/lang/String;Landroidx/compose/ui/Modifier;Lcom/loomplay/feature/player/PlayerViewModel;)V
+Lcom/loomplay/feature/player/PlayerViewModel;
+HSPLcom/loomplay/feature/player/PlayerViewModel;->playFromRoute(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/loomplay/core/model/EnginePreference;Ljava/util/Map;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/Long;ZLjava/util/List;)V
+HSPLcom/loomplay/feature/player/PlayerViewModel;->attachSurface(Landroid/widget/FrameLayout;)V
+HSPLcom/loomplay/feature/player/PlayerViewModel;->togglePlayPause()V
+HSPLcom/loomplay/feature/player/PlayerViewModel;->seekTo(J)V
+
+# --- 5. HIGH-FREQUENCY HUD & SCRUBBER ---
+Lcom/loomplay/core/ui/components/LoomComponentsKt;
+HSPLcom/loomplay/core/ui/components/LoomComponentsKt;->LoomScrubberBar(JJJLkotlin/jvm/functions/Function1;Landroidx/compose/ui/Modifier;Ljava/util/List;Landroidx/compose/runtime/Composer;II)V
+
+# --- 6. MEDIA3 & EXOPLAYER SUBSYSTEM ---
+Lcom/loomplay/core/player/exo/ExoPlayerEngine;
+HSPLcom/loomplay/core/player/exo/ExoPlayerEngine;->attachSurfaceView(Landroid/widget/FrameLayout;)V
+HSPLcom/loomplay/core/player/exo/ExoPlayerEngine;->detachSurfaceView()V
+HSPLcom/loomplay/core/player/exo/ExoPlayerEngine;->prepare(Lcom/loomplay/core/model/LoomMediaSource;JZ)V
+HSPLcom/loomplay/core/player/exo/ExoPlayerEngine;->play()V
+HSPLcom/loomplay/core/player/exo/ExoPlayerEngine;->pause()V
+HSPLcom/loomplay/core/player/exo/ExoPlayerEngine;->seekTo(J)V
+Landroidx/media3/exoplayer/ExoPlayer$Builder;
+HSPLandroidx/media3/exoplayer/ExoPlayer$Builder;->build()Landroidx/media3/exoplayer/ExoPlayer;
+HSPLandroidx/media3/exoplayer/ExoPlayerImpl;->prepare()V
+HSPLandroidx/media3/exoplayer/ExoPlayerImpl;->play()V
+HSPLandroidx/media3/exoplayer/ExoPlayerImpl;->pause()V
+HSPLandroidx/media3/exoplayer/ExoPlayerImpl;->seekTo(J)V
+HSPLandroidx/media3/exoplayer/ExoPlayerImpl;->setMediaItem(Landroidx/media3/common/MediaItem;)V
+
+# --- 7. MPV COMPATIBILITY ENGINE ---
+Lcom/loomplay/core/player/mpv/MpvPlayerEngine;
+HSPLcom/loomplay/core/player/mpv/MpvPlayerEngine;->attachSurfaceView(Landroid/widget/FrameLayout;)V
+HSPLcom/loomplay/core/player/mpv/MpvPlayerEngine;->prepare(Lcom/loomplay/core/model/LoomMediaSource;JZ)V
+HSPLcom/loomplay/core/player/mpv/MpvPlayerEngine;->play()V
+HSPLcom/loomplay/core/player/mpv/MpvPlayerEngine;->pause()V
+HSPLcom/loomplay/core/player/mpv/MpvPlayerEngine;->seekTo(J)V
+
+# --- 8. MEDIASESSION CONNECTOR ---
+Lcom/loomplay/core/mediasession/MediaSessionConnector;
+HSPLcom/loomplay/core/mediasession/MediaSessionConnector;->connectSession(Ljava/lang/Object;)V
+HSPLcom/loomplay/core/mediasession/MediaSessionConnector;->disconnectSession(Ljava/lang/Object;)V
+

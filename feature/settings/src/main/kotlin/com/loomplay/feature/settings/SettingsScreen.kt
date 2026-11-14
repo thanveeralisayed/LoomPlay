@@ -1,6 +1,9 @@
 package com.loomplay.feature.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -340,7 +343,7 @@ fun SettingsScreen(
                 val currentVersion = remember(context) {
                     runCatching {
                         context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                    }.getOrNull() ?: "0.1.5"
+                    }.getOrNull() ?: "0.1.6"
                 }
                 SettingsCategoryHub(
                     prefs = prefs,
@@ -393,16 +396,33 @@ fun SettingsScreen(
         )
     }
 
-    val launchInstaller: (android.net.Uri) -> Unit = { uri ->
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        runCatching {
-            context.startActivity(intent)
-        }.onFailure {
-            Toast.makeText(context, "Unable to launch installer: ${it.message}", Toast.LENGTH_LONG).show()
+    val launchInstaller: (Uri) -> Unit = { uri ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            Toast.makeText(context, "Please allow LoomPlay to install apps", Toast.LENGTH_LONG).show()
+            val permissionIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                data = Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching {
+                context.startActivity(permissionIntent)
+            }.onFailure {
+                // Fallback to generic unknown app sources settings if package-specific fails
+                val fallbackIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                runCatching { context.startActivity(fallbackIntent) }
+            }
+        } else {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching {
+                context.startActivity(intent)
+            }.onFailure {
+                Toast.makeText(context, "Unable to launch installer: ${it.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
 

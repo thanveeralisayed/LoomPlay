@@ -74,7 +74,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -96,6 +95,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.loomplay.core.model.EnginePreference
 import com.loomplay.core.model.EngineType
 import com.loomplay.core.model.LibrarySortOrder
@@ -454,7 +456,6 @@ fun LibraryScreen(
                                 MinimalContinueWatchingCard(
                                     item = item,
                                     showTechBadges = showTechBadges,
-                                    loadThumbnail = viewModel::loadThumbnail,
                                     onClick = { onPlayMedia(item.uri, item.title, item.mimeType, null, emptyMap()) },
                                 )
                             }
@@ -498,7 +499,6 @@ fun LibraryScreen(
                         MinimalMediaListRow(
                             item = item,
                             showTechBadges = showTechBadges,
-                            loadThumbnail = viewModel::loadThumbnail,
                             onClick = { onPlayMedia(item.uri, item.title, item.mimeType, null, emptyMap()) },
                             onMoreClick = { optionsTarget = item },
                         )
@@ -738,13 +738,8 @@ private fun SegmentedTabButton(
 private fun MinimalContinueWatchingCard(
     item: LoomMediaItem,
     showTechBadges: Boolean,
-    loadThumbnail: suspend (String) -> Bitmap?,
     onClick: () -> Unit,
 ) {
-    val thumb by produceState<Bitmap?>(initialValue = null, key1 = item.uri) {
-        value = loadThumbnail(item.uri)
-    }
-
     Surface(
         onClick = onClick,
         modifier = Modifier.width(204.dp),
@@ -758,14 +753,15 @@ private fun MinimalContinueWatchingCard(
                     .aspectRatio(16f / 9f)
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest),
             ) {
-                if (thumb != null) {
-                    Image(
-                        bitmap = thumb!!.asImageBitmap(),
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(Uri.parse(item.uri))
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
 
                 if (showTechBadges) {
                     EngineBadgePill(
@@ -833,14 +829,9 @@ private fun MinimalContinueWatchingCard(
 private fun MinimalMediaListRow(
     item: LoomMediaItem,
     showTechBadges: Boolean,
-    loadThumbnail: suspend (String) -> Bitmap?,
     onClick: () -> Unit,
     onMoreClick: () -> Unit,
 ) {
-    val thumb by produceState<Bitmap?>(initialValue = null, key1 = item.uri) {
-        value = loadThumbnail(item.uri)
-    }
-
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -860,14 +851,15 @@ private fun MinimalMediaListRow(
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest),
             ) {
-                if (thumb != null) {
-                    Image(
-                        bitmap = thumb!!.asImageBitmap(),
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(Uri.parse(item.uri))
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
                 if (item.durationMs > 0L) {
                     Surface(
                         modifier = Modifier

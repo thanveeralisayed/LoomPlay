@@ -104,6 +104,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -218,17 +219,21 @@ fun PlayerScreen(
     var panX by remember(mediaUri) { mutableFloatStateOf(0f) }
     var panY by remember(mediaUri) { mutableFloatStateOf(0f) }
 
-    val chapterFractions = remember(chapters, durationMs) {
-        if (durationMs > 0L && chapters.isNotEmpty()) {
-            chapters.mapNotNull { ch ->
-                if (ch.startMs in 1L until durationMs) ch.startMs.toFloat() / durationMs.toFloat() else null
+    val chapterFractions by remember(chapters) {
+        derivedStateOf {
+            if (durationMs > 0L && chapters.isNotEmpty()) {
+                chapters.mapNotNull { ch ->
+                    if (ch.startMs in 1L until durationMs) ch.startMs.toFloat() / durationMs.toFloat() else null
+                }
+            } else {
+                emptyList()
             }
-        } else {
-            emptyList()
         }
     }
-    val currentChapterTitle = remember(chapters, positionMs / 1000L) {
-        chapters.lastOrNull { it.startMs <= positionMs }?.title
+    val currentChapterTitle by remember(chapters) {
+        derivedStateOf {
+            chapters.lastOrNull { it.startMs <= positionMs }?.title
+        }
     }
 
     var brightnessFraction by remember {
@@ -444,6 +449,9 @@ fun PlayerScreen(
                     if (host.translationY != targetPanY) {
                         host.translationY = targetPanY
                     }
+                },
+                onRelease = { host ->
+                    host.removeAllViews()
                 },
                 modifier = Modifier.fillMaxSize(),
             )
