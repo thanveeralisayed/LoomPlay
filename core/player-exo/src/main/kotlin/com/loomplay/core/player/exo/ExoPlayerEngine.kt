@@ -117,11 +117,20 @@ class ExoPlayerEngine @Inject constructor(
     private val extraSubtitles = mutableListOf<MediaItem.SubtitleConfiguration>()
     private var activeVideoDecoderName: String? = null
     private var isVideoHwAccelerated: Boolean = true
+    private var isConfiguredForNetwork: Boolean? = null
+
+    private fun isNetworkUri(uri: Uri): Boolean {
+        val scheme = uri.scheme?.lowercase() ?: return false
+        return scheme == "http" || scheme == "https" || scheme == "rtsp" || scheme == "rtmp"
+    }
 
     @OptIn(UnstableApi::class)
-    private fun ensurePlayer(headers: Map<String, String> = emptyMap()): ExoPlayer {
+    private fun ensurePlayer(
+        headers: Map<String, String> = emptyMap(),
+        isNetwork: Boolean = false,
+    ): ExoPlayer {
         val current = exoPlayer
-        if (current != null && configuredHeaders == headers) {
+        if (current != null && configuredHeaders == headers && isConfiguredForNetwork == isNetwork) {
             return current
         }
         val preservedTrackParams = current?.trackSelectionParameters
@@ -151,15 +160,30 @@ class ExoPlayerEngine @Inject constructor(
             setEnableDecoderFallback(true)
         }
 
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ 30_000,
-                /* maxBufferMs = */ 60_000,
-                /* bufferForPlaybackMs = */ 1_000,
-                /* bufferForPlaybackAfterRebufferMs = */ 2_500,
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
+        // Low-latency tuning:
+        // Local files require minimal buffer (instant seeking, lower RAM usage).
+        // Network streams require a deeper buffer to tolerate cellular jitter and bandwidth fluctuations.
+        val loadControl = if (isNetwork) {
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    /* minBufferMs = */ 25_000,
+                    /* maxBufferMs = */ 60_000,
+                    /* bufferForPlaybackMs = */ 1_500,
+                    /* bufferForPlaybackAfterRebufferMs = */ 3_000,
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+        } else {
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    /* minBufferMs = */ 2_500,
+                    /* maxBufferMs = */ 6_000,
+                    /* bufferForPlaybackMs = */ 500,
+                    /* bufferForPlaybackAfterRebufferMs = */ 1_000,
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+        }
 
         val extractorsFactory = DefaultExtractorsFactory().apply {
             setConstantBitrateSeekingEnabled(true)
@@ -308,6 +332,7 @@ class ExoPlayerEngine @Inject constructor(
                     }
                 })
                 configuredHeaders = headers
+                isConfiguredForNetwork = isNetwork
                 _playbackSpeed.value = 1.0f
                 playerView?.player = this
                 exoPlayer = this
@@ -381,7 +406,8 @@ class ExoPlayerEngine @Inject constructor(
 
     @OptIn(UnstableApi::class)
     override fun attachSurfaceView(container: FrameLayout) {
-        val player = ensurePlayer(currentSource?.headers ?: emptyMap())
+        val isNetwork = currentSource?.uri?.let(::isNetworkUri) ?: false
+        val player = ensurePlayer(currentSource?.headers ?: emptyMap(), isNetwork = isNetwork)
         val view = playerView ?: LoomPlayerView(container.context).apply {
             useController = false
             setEnableComposeSurfaceSyncWorkaround(true)
@@ -402,9 +428,11 @@ class ExoPlayerEngine @Inject constructor(
     }
 
     override fun detachSurfaceView() {
-        playerView?.player = null
+        // Shared surface / pre-warming:
+        // Do NOT null out playerView or destroy its surface immediately on navigation transitions.
+        // Detaching from the parent container allows smooth reuse when switching back to the player
+        // screen or starting another video from Continue Watching / Playlists without black-frame flash.
         (playerView?.parent as? ViewGroup)?.removeView(playerView)
-        playerView = null
     }
 
     override suspend fun prepare(
@@ -424,7 +452,7 @@ class ExoPlayerEngine @Inject constructor(
         activeVideoDecoderName = null
         isVideoHwAccelerated = true
         _stats.value = defaultStats()
-        val player = ensurePlayer(source.headers)
+        val player = ensurePlayer(source.headers, isNetwork = isNetworkUri(source.uri))
         player.setPlaybackSpeed(1.0f)
         player.trackSelectionParameters = player.trackSelectionParameters
             .buildUpon()
@@ -635,10 +663,12 @@ class ExoPlayerEngine @Inject constructor(
     override fun release() {
         updateTicker(false)
         detachSurfaceView()
+        playerView?.player = null
         playerView = null
         exoPlayer?.release()
         exoPlayer = null
         configuredHeaders = null
+        isConfiguredForNetwork = null
         activeVideoDecoderName = null
         isVideoHwAccelerated = true
         currentSource = null
